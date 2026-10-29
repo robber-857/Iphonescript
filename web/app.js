@@ -16,9 +16,9 @@ function render(){
  $('phone-test').disabled=!phone.configured;
  $('location').textContent='SYDNEY · '+(state.postcode||'2000');
  const connected=state.collector_seen&&state.server_time-state.collector_seen<130;
- $('status').textContent=!connected?'等待浏览器采集器连接':state.running?'正在检查':state.enabled?'监测已开启':'监测已暂停';
+ $('status').textContent=!connected?'等待浏览器采集器连接':state.cookie_cleanup?'等待清理 Apple Cookie':state.running?'正在检查':state.enabled?'监测已开启':'监测已暂停';
  $('dot').className='dot'+(connected&&state.enabled?' on':'');
- $('progress').textContent=connected?(state.current||''):'请在 Chrome 加载项目中的 collector 扩展';
+ $('progress').textContent=connected?(state.current||''):'请加载扩展，并在手动打开的 Apple 商品页点击扩展图标指定采集页';
  $('toggle').textContent=state.enabled?'暂停监测':'开始监测';
  $('check').disabled=state.running;
  $('next').textContent=state.next_check?'下次检查 '+stamp(state.next_check):state.running?'按配置依次检查，请稍候':'等待开始';
@@ -38,7 +38,7 @@ function render(){
  }
  if(!body.children.length){const td=element('td','当前筛选下没有已确认有货的门店');td.colSpan=variants.length+1;const tr=element('tr','');tr.append(td);body.append(tr)}
  $('summary').textContent=`${available} 个有货组合 · ${unknown} 个待确认`;
- if(!dirty){$('model').value=state.model||'duo';$('postcode').value=state.postcode||'2000';$('interval').value=state.interval;$('notifications').checked=state.notifications}
+ if(!dirty){$('model').value=state.model||'duo';$('postcode').value=state.postcode||'2000';$('interval').value=state.interval;$('notifications').checked=state.notifications;$('clear-cookies').checked=!!state.clear_apple_cookies}
  $('events').replaceChildren();$('count').textContent=state.events.length?`/ ${state.events.length}`:'';
  for(const ev of state.events.slice(0,30)){const e=element('div','','event '+ev.kind);e.append(element('time',stamp(ev.time)),element('span',ev.message));$('events').append(e)}
  if(!state.events.length)$('events').append(element('p','开始监测后，这里将记录有货提醒和查询异常。','muted'));
@@ -47,9 +47,9 @@ async function refresh(){try{const r=await fetch('/api/state');if(!r.ok)throw Er
 async function action(path,body={}){try{const r=await fetch('/api/'+path,{method:'POST',headers:{'Content-Type':'application/json','X-Duo-Token':state?.token||''},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error);await refresh();return true}catch(e){toast(e.message);return false}}
 $('toggle').onclick=()=>action(state?.enabled?'pause':'start');$('check').onclick=()=>action('check');
 $('test').onclick=()=>action('test-notification');
-$('save').onclick=async()=>{if(!/^[0-9]{4}$/.test($('postcode').value.trim())){toast('请输入四位澳洲邮编，例如 2000');$('postcode').focus();return}if(await action('settings',{model:$('model').value,postcode:$('postcode').value.trim(),interval:Number($('interval').value),notifications:$('notifications').checked})){dirty=false;render();toast('设置已保存')}};
+$('save').onclick=async()=>{if(!/^[0-9]{4}$/.test($('postcode').value.trim())){toast('请输入四位澳洲邮编，例如 2000');$('postcode').focus();return}if(await action('settings',{model:$('model').value,postcode:$('postcode').value.trim(),interval:Number($('interval').value),notifications:$('notifications').checked,clear_apple_cookies:$('clear-cookies').checked})){dirty=false;render();toast('设置已保存')}};
 for(const id of ['colour','capacity','only'])$(id).onchange=render;
-for(const id of ['interval','notifications','postcode','model'])$(id).oninput=()=>dirty=true;
+for(const id of ['interval','notifications','postcode','model','clear-cookies'])$(id).oninput=()=>dirty=true;
 for(const id of ['phone-enabled','phone-sid','phone-token','phone-from','phone-to'])$(id).oninput=()=>phoneDirty=true;
 $('phone-save').onclick=async()=>{
  if(await action('phone/settings',{enabled:$('phone-enabled').checked,sid:$('phone-sid').value,token:$('phone-token').value,from:$('phone-from').value,to:$('phone-to').value})){
