@@ -1,0 +1,15 @@
+.vendor/
+.venv/
+.tmp/
+__pycache__/
+data/
+output/
+apple-product.html
+fulfillment-sample.json
+data-server*.log
+
+dist/
+docs/evidence/
+.env
+.env.*
+

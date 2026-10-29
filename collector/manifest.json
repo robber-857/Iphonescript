@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Duo 悉尼库存采集器",
+  "version": "1.1.0",
+  "description": "为本机 Duo 后台采集 Apple 澳洲门店自提库存。",
+  "permissions": [
+    "alarms",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8765/*",
+    "https://www.apple.com/au/shop/buy-iphone/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "打开 Duo 库存后台"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.apple.com/au/shop/buy-iphone/iphone-duo/*",
+        "https://www.apple.com/au/shop/buy-iphone/iphone-18-pro/*"
+      ],
+      "js": [
+        "page-input.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.apple.com/au/shop/buy-iphone/iphone-duo/*",
+        "https://www.apple.com/au/shop/buy-iphone/iphone-18-pro/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

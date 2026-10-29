@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Duo / 悉尼库存监测</title><link rel="stylesheet" href="/style.css"></head>
+<body><main>
+<header><a class="brand" href="/">duo<span> / stock monitor</span></a><span class="location" id="location">SYDNEY · 2000</span></header>
+<section class="intro"><div><p class="eyebrow">APPLE STORE PICKUP</p><h1>悉尼门店库存</h1><p class="muted" id="model-summary">iPhone Duo · 全部颜色和容量 · 7 家悉尼门店</p></div><div class="actions"><button id="toggle" class="primary">开始监测</button><button id="check">立即检查</button></div></section>
+<section class="statusbar" aria-live="polite"><div><span id="dot" class="dot"></span><strong id="status">连接后台中</strong><span id="progress"></span></div><span id="next">—</span></section>
+<section class="toolbar"><div class="filters"><label>颜色 <select id="colour"><option value="">全部颜色</option><option>Night Sky</option><option>Star White</option></select></label><label>容量 <select id="capacity"><option value="">全部容量</option><option>256GB</option><option>512GB</option><option>1TB</option><option>2TB</option></select></label><label class="check"><input type="checkbox" id="only"> 仅看有货</label></div><span id="summary" class="muted">等待首次检查</span></section>
+<div class="tablewrap"><table><thead><tr id="head"></tr></thead><tbody id="rows"></tbody></table></div>
+<p class="note">有货表示 Apple 页面允许门店自提；以官网最终下单结果为准。查询失败或超期结果显示为“待确认”，不会当作无货。</p>
+<section class="bottom"><div class="settings"><h2>监测设置</h2><p class="muted">后台运行时，关闭此网页仍会继续检查。</p><label>监测机型 <select id="model"><option value="duo">iPhone Duo（默认 · 全部配置）</option><option value="pro-test">iPhone 18 Pro（测试 · 256GB Black）</option></select></label><p class="note">Pro 使用真实库存验证有货显示和 Windows 提醒，不触发自动电话。保存后切换采集范围。</p><label>查询邮编 <input id="postcode" type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" value="2000" autocomplete="postal-code" aria-describedby="postcode-help"></label><p class="note" id="postcode-help">默认 2000。修改查询中心后重新检查，监测门店仍为悉尼 7 家。</p><label>每轮结束后等待 <select id="interval"><option value="30">30 秒</option><option value="60">1 分钟</option><option value="120">2 分钟</option><option value="300">5 分钟</option></select></label><p class="note">从整轮完成后计时；采集器约每 30 秒唤醒，实际开始可能稍晚。</p><label class="check"><input type="checkbox" id="notifications"> Windows 声音与弹窗提醒</label><div class="actions"><button id="save">保存设置</button><button id="test" class="textbutton">测试提醒 ↗</button></div><p class="note">首次发现有货、或缺货后再次有货时提醒。请保持电脑联网且不休眠；退出后台会停止检查。</p><h2 class="phone-heading">电话提醒 · Twilio</h2>
+<p class="note">补货后自动拨打你的手机，英文播报机型和门店。整轮合并一次；至少间隔 10 分钟，每 UTC 日最多 3 次（含测试），被限流的提醒仅保留日志，不补拨。可能产生服务商费用。</p>
+<p id="phone-status" class="muted"></p>
+<label class="check"><input type="checkbox" id="phone-enabled">开启 Duo 自动电话提醒</label>
+<label>Account SID <input id="phone-sid" autocomplete="off" placeholder="AC…"></label>
+<label>Auth Token <input id="phone-token" type="password" autocomplete="new-password" placeholder="已保存时留空保留"></label>
+<label>Twilio 拨出号码 <input id="phone-from" type="tel" placeholder="+国家码…"></label>
+<label>我的接听号码 <input id="phone-to" type="tel" placeholder="+614…"></label>
+<p class="note">凭据只保存在本机 data/phone.json，未加密，请勿分享 data 文件夹。已保存字段留空可保留。试用账户需先在 Twilio 验证接听号码。</p>
+<div class="actions"><button id="phone-save">保存电话设置</button><button id="phone-test">拨打测试电话</button></div>
+</div><div class="history"><h2>最近动态 <span id="count"></span></h2><div id="events"><p class="muted">尚无记录</p></div></div></section>
+<footer><span>本地运行 · 数据保存在此电脑</span><span>范围：Sydney / Broadway / Bondi / Chatswood Chase / Miranda / Castle Towers / Penrith</span></footer>
+</main><div id="toast" role="status" hidden></div><script src="/app.js"></script></body></html>
