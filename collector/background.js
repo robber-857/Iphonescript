@@ -1,5 +1,21 @@
 const BASE='http://127.0.0.1:8765';
 let busy=false;
+async function showCollector(url,tabId){
+ const dashboards=await chrome.tabs.query({url:BASE+'/*'});
+ const current=await chrome.windows.getLastFocused({windowTypes:['normal']});
+ const dashboard=dashboards.find(t=>t.windowId===current.id)||dashboards[0];
+ let tab;
+ if(tabId)try{
+  tab=await chrome.tabs.get(tabId);
+  if(dashboard&&tab.windowId!==dashboard.windowId)await chrome.tabs.move(tabId,{windowId:dashboard.windowId,index:-1});
+  tab=await chrome.tabs.update(tabId,{url,active:true});
+ }catch{tab=null}
+ if(!tab){
+  tab=await chrome.tabs.create({url,active:true,windowId:dashboard?.windowId??current.id});
+ }
+ await chrome.windows.update(tab.windowId,{focused:true});
+ return tab;
+}
 async function api(path,body){
  const state=await (await fetch(BASE+'/api/state')).json();
  const options={headers:{'X-Duo-Token':state.token}};
@@ -14,16 +30,14 @@ async function poll(){
   if(old.task?.id===task.id){
    if(old.tabId)try{
     const reply=await chrome.tabs.sendMessage(old.tabId,{type:'collect',task});
-    if(!reply?.accepted)await chrome.tabs.update(old.tabId,{url:task.variant.url,active:false});
+    if(!reply?.accepted)await showCollector(task.variant.url,old.tabId);
    }catch{
     try{await chrome.tabs.reload(old.tabId)}catch{await chrome.storage.local.remove(['task','tabId'])}
    }
    return;
   }
   await chrome.storage.local.set({task});
-  let tab;
-  if(old.tabId)try{tab=await chrome.tabs.update(old.tabId,{url:task.variant.url,active:false})}catch{}
-  if(!tab)tab=await chrome.tabs.create({url:task.variant.url,active:false});
+  const tab=await showCollector(task.variant.url,old.tabId);
   await chrome.storage.local.set({tabId:tab.id});
  }catch(e){console.warn('Duo collector:',e.message)}finally{busy=false}
 }
