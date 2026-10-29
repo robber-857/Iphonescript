@@ -12,7 +12,7 @@ import server
 class BackendTests(unittest.TestCase):
     def setUp(self):
         self.original=copy.deepcopy(server.STATE)
-        server.STATE.update(enabled=True,model='duo',postcode='2000',running=False,next_check=0,task=None,queue=[],results={},events=[])
+        server.STATE.update(enabled=True,model='duo',postcode='2000',running=False,next_check=0,task=None,queue=[],results={},events=[],clear_apple_cookies=False,cookie_cleanup=None)
         server.PENDING_PHONE.clear()
         self.mock_phone=patch.object(server.PHONE,'call').start()
         self.mock_save=patch.object(server,'save').start()
@@ -42,6 +42,26 @@ class BackendTests(unittest.TestCase):
         self.assertFalse(server.STATE['running'])
         self.assertGreater(server.STATE['next_check'],time.time())
         self.mock_notify.assert_not_called()
+
+    def test_cleanup_blocks_next_cycle_until_ack_and_then_waits(self):
+        server.STATE.update(clear_apple_cookies=True,running=True,queue=[],interval=60)
+        response=self.request('/api/collector/task')
+        cleanup=response['cleanup']
+        self.assertTrue(cleanup)
+        self.assertIsNone(server.STATE['next_check'])
+        self.assertEqual(self.request('/api/collector/task')['cleanup'],cleanup)
+        self.request('/api/collector/cleanup',dict(id=cleanup,error=False))
+        self.assertAlmostEqual(server.STATE['next_check']-time.time(),60,delta=2)
+        self.assertIsNone(self.request('/api/collector/task')['task'])
+
+    def test_cleanup_failure_pauses_and_wrong_ack_is_rejected(self):
+        server.STATE.update(clear_apple_cookies=True,running=True,queue=[])
+        cleanup=self.request('/api/collector/task')['cleanup']
+        with self.assertRaises(HTTPError):
+            self.request('/api/collector/cleanup',dict(id='wrong',error=False))
+        self.request('/api/collector/cleanup',dict(id=cleanup,error=True))
+        self.assertFalse(server.STATE['enabled'])
+        self.assertIsNone(server.STATE['next_check'])
 
     def test_error_preserves_last_success(self):
         task=self.request('/api/collector/task')['task']

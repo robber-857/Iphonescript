@@ -1,15 +1,17 @@
 {
   "manifest_version": 3,
   "name": "Duo 悉尼库存采集器",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "为本机 Duo 后台采集 Apple 澳洲门店自提库存。",
   "permissions": [
     "alarms",
-    "storage"
+    "storage",
+    "cookies"
   ],
   "host_permissions": [
     "http://127.0.0.1:8765/*",
-    "https://www.apple.com/au/shop/buy-iphone/*"
+    "https://www.apple.com/au/shop/buy-iphone/*",
+    "https://*.apple.com/*"
   ],
   "background": {
     "service_worker": "background.js"

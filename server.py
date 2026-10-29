@@ -28,6 +28,8 @@ STATE.update(running=False, current=None, next_check=time.time() if STATE['enabl
 STATE.update(collector_seen=None,task=None,queue=[])
 STATE.setdefault('postcode','2000')
 STATE.setdefault('model','duo')
+STATE.setdefault('clear_apple_cookies',False)
+STATE.setdefault('cookie_cleanup',None)
 PHONE = Phone(DATA)
 PENDING_PHONE = []
 
@@ -88,6 +90,8 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 now=time.time()
                 STATE['collector_seen']=now
+                if STATE.get('cookie_cleanup') and STATE.get('clear_apple_cookies'):
+                    return self.send(200,{'task':None,'cleanup':STATE['cookie_cleanup']})
                 task=STATE.get('task')
                 if task and now-task['started']>150:
                     result=STATE['results'].setdefault(task['variant']['id'],dict(stores=[],checked=None))
@@ -106,8 +110,10 @@ class Handler(BaseHTTPRequestHandler):
                     elif STATE['running']:
                         finish_phone_cycle()
                         STATE.update(running=False,current=None,last_cycle=now,next_check=now+STATE['interval'])
+                        if STATE.get('clear_apple_cookies'):
+                            STATE.update(cookie_cleanup=secrets.token_hex(12),next_check=None)
                 save()
-                return self.send(200,{'task':STATE.get('task')})
+                return self.send(200,{'task':STATE.get('task'),'cleanup':STATE.get('cookie_cleanup')})
         files={'/':'index.html','/app.js':'app.js','/style.css':'style.css'}
         if self.path not in files:
             return self.send(404,{'error':'Not found'})
@@ -146,6 +152,12 @@ class Handler(BaseHTTPRequestHandler):
                     if model not in MODELS:
                         raise ValueError('请选择支持的机型')
                     changed=postcode!=STATE['postcode'] or model!=STATE['model']
+                    clear_cookies=payload.get('clear_apple_cookies',STATE.get('clear_apple_cookies',False))
+                    if not isinstance(clear_cookies,bool):
+                        raise ValueError('Cookie 清理开关格式错误')
+                    STATE['clear_apple_cookies']=clear_cookies
+                    if not clear_cookies:
+                        STATE['cookie_cleanup']=None
                     STATE.update(interval=interval,notifications=payload['notifications'])
                     if changed:
                         PENDING_PHONE.clear()
@@ -154,6 +166,14 @@ class Handler(BaseHTTPRequestHandler):
                         event('info','监测配置：'+MODELS[model]+' / '+postcode+'，旧结果已清空')
                     elif STATE['enabled'] and not STATE['running']:
                         STATE['next_check']=time.time()+interval
+                elif self.path == '/api/collector/cleanup':
+                    if not STATE.get('cookie_cleanup') or payload.get('id')!=STATE['cookie_cleanup']:
+                        return self.send(409,{'error':'Cleanup expired'})
+                    error=bool(payload.get('error'))
+                    event('error' if error else 'info','Apple Cookie 清理失败，监测已暂停，请检查扩展权限' if error else '整轮结束：Apple Cookie 清理完成，开始等待下一轮')
+                    STATE.update(cookie_cleanup=None,next_check=time.time()+STATE['interval'] if STATE['enabled'] and not error else None)
+                    if error:
+                        STATE['enabled']=False
                 elif self.path == '/api/phone/settings':
                     PHONE.configure(payload)
                 elif self.path == '/api/phone/test':

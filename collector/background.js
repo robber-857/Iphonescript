@@ -1,5 +1,20 @@
 const BASE='http://127.0.0.1:8765';
 let busy=false;
+async function clearAppleCookies(tabId){
+ const stores=await chrome.cookies.getAllCookieStores();
+ const store=stores.find(s=>s.tabIds.includes(tabId));
+ if(!store)throw Error('无法确认指定页 Cookie 存储区');
+ const cookies=await chrome.cookies.getAll({domain:'apple.com',storeId:store.id});
+ for(const cookie of cookies){
+  const domain=cookie.domain.replace(/^\./,'');
+  if(domain!=='apple.com'&&!domain.endsWith('.apple.com'))continue;
+  const details={url:'https://'+domain+cookie.path,name:cookie.name,storeId:store.id};
+  if(cookie.partitionKey)details.partitionKey=cookie.partitionKey;
+  await chrome.cookies.remove(details);
+ }
+ const remaining=await chrome.cookies.getAll({domain:'apple.com',storeId:store.id});
+ if(remaining.length)throw Error('Apple Cookie 未完全清除');
+}
 function supported(url){return /^https:\/\/www\.apple\.com\/au\/shop\/buy-iphone\/(iphone-duo|iphone-18-pro)\//.test(url||'')}
 async function badge(text,title){
  await chrome.action.setBadgeText({text});
@@ -31,7 +46,14 @@ async function poll(){
   let selected;
   try{selected=await chrome.tabs.get(old.tabId)}catch{await release();return}
   if(!supported(selected.url)){await release();return}
-  const {task}=await api('/api/collector/task');
+  const {task,cleanup}=await api('/api/collector/task');
+  if(cleanup){
+   let error=false;
+   try{await clearAppleCookies(old.tabId)}catch(e){error=true;console.warn('Apple Cookie cleanup failed')}
+   await api('/api/collector/cleanup',{id:cleanup,error});
+   await chrome.storage.local.remove('task');
+   return;
+  }
   if(!task){await chrome.storage.local.remove('task');return}
   if(old.task?.id===task.id){
    if(old.tabId)try{
