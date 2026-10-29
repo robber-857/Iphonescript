@@ -18,7 +18,7 @@ function render(){
  const connected=state.collector_seen&&state.server_time-state.collector_seen<130;
  $('status').textContent=!connected?'等待浏览器采集器连接':state.running?'正在检查':state.enabled?'监测已开启':'监测已暂停';
  $('dot').className='dot'+(connected&&state.enabled?' on':'');
- $('progress').textContent=connected?(state.current||''):'请在 Chrome 加载项目中的 collector 扩展';
+ $('progress').textContent=connected?(state.current||''):'请加载扩展，并在手动打开的 Apple 商品页点击扩展图标指定采集页';
  $('toggle').textContent=state.enabled?'暂停监测':'开始监测';
  $('check').disabled=state.running;
  $('next').textContent=state.next_check?'下次检查 '+stamp(state.next_check):state.running?'按配置依次检查，请稍候':'等待开始';

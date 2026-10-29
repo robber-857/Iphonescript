@@ -4,6 +4,7 @@
 <header><a class="brand" href="/">duo<span> / stock monitor</span></a><span class="location" id="location">SYDNEY · 2000</span></header>
 <section class="intro"><div><p class="eyebrow">APPLE STORE PICKUP</p><h1>悉尼门店库存</h1><p class="muted" id="model-summary">iPhone Duo · 全部颜色和容量 · 7 家悉尼门店</p></div><div class="actions"><button id="toggle" class="primary">开始监测</button><button id="check">立即检查</button></div></section>
 <section class="statusbar" aria-live="polite"><div><span id="dot" class="dot"></span><strong id="status">连接后台中</strong><span id="progress"></span></div><span id="next">—</span></section>
+<p class="note">采集前：手动打开 Apple Duo 或 Pro 的具体商品配置页，点击 Chrome 工具栏中的“Duo 悉尼库存采集器”，看到“已选”后开始监测。只复用指定页；关闭或离开该页后需重新指定，不会自动新建。</p>
 <section class="toolbar"><div class="filters"><label>颜色 <select id="colour"><option value="">全部颜色</option><option>Night Sky</option><option>Star White</option></select></label><label>容量 <select id="capacity"><option value="">全部容量</option><option>256GB</option><option>512GB</option><option>1TB</option><option>2TB</option></select></label><label class="check"><input type="checkbox" id="only"> 仅看有货</label></div><span id="summary" class="muted">等待首次检查</span></section>
 <div class="tablewrap"><table><thead><tr id="head"></tr></thead><tbody id="rows"></tbody></table></div>
 <p class="note">有货表示 Apple 页面允许门店自提；以官网最终下单结果为准。查询失败或超期结果显示为“待确认”，不会当作无货。</p>

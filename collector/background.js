@@ -1,20 +1,21 @@
 const BASE='http://127.0.0.1:8765';
 let busy=false;
+function supported(url){return /^https:\/\/www\.apple\.com\/au\/shop\/buy-iphone\/(iphone-duo|iphone-18-pro)\//.test(url||'')}
+async function badge(text,title){
+ await chrome.action.setBadgeText({text});
+ await chrome.action.setTitle({title});
+}
+async function release(){
+ await chrome.storage.local.remove(['task','tabId','manualBinding']);
+ await badge('选页','请手动打开 Apple 商品页，点击此图标指定采集页');
+}
 async function showCollector(url,tabId){
- const dashboards=await chrome.tabs.query({url:BASE+'/*'});
- const current=await chrome.windows.getLastFocused({windowTypes:['normal']});
- const dashboard=dashboards.find(t=>t.windowId===current.id)||dashboards[0];
- let tab;
- if(tabId)try{
-  tab=await chrome.tabs.get(tabId);
-  if(dashboard&&tab.windowId!==dashboard.windowId)await chrome.tabs.move(tabId,{windowId:dashboard.windowId,index:-1});
-  tab=await chrome.tabs.update(tabId,{url,active:true});
- }catch{tab=null}
- if(!tab){
-  tab=await chrome.tabs.create({url,active:true,windowId:dashboard?.windowId??current.id});
- }
+ const tab=await chrome.tabs.get(tabId);
+ if(!supported(tab.url))throw Error('指定页已离开 Apple 商品页，请重新指定');
+ await chrome.tabs.update(tabId,{active:true});
  await chrome.windows.update(tab.windowId,{focused:true});
- return tab;
+ if(tab.url.split('?')[0]===url)await chrome.tabs.reload(tabId);
+ else await chrome.tabs.update(tabId,{url});
 }
 async function api(path,body){
  const state=await (await fetch(BASE+'/api/state')).json();
@@ -25,7 +26,12 @@ async function api(path,body){
 async function poll(){
  if(busy)return;busy=true;
  try{
-  const {task}=await api('/api/collector/task');const old=await chrome.storage.local.get(['task','tabId']);
+  const old=await chrome.storage.local.get(['task','tabId','manualBinding']);
+  if(!old.manualBinding||!old.tabId){await badge('选页','请手动打开 Apple 商品页，点击此图标指定采集页');return}
+  let selected;
+  try{selected=await chrome.tabs.get(old.tabId)}catch{await release();return}
+  if(!supported(selected.url)){await release();return}
+  const {task}=await api('/api/collector/task');
   if(!task){await chrome.storage.local.remove('task');return}
   if(old.task?.id===task.id){
    if(old.tabId)try{
@@ -37,14 +43,25 @@ async function poll(){
    return;
   }
   await chrome.storage.local.set({task});
-  const tab=await showCollector(task.variant.url,old.tabId);
-  await chrome.storage.local.set({tabId:tab.id});
+  await showCollector(task.variant.url,old.tabId);
  }catch(e){console.warn('Duo collector:',e.message)}finally{busy=false}
 }
-chrome.runtime.onInstalled.addListener(async()=>{await chrome.storage.local.remove('task');chrome.alarms.create('poll',{periodInMinutes:0.5});poll()});
-chrome.runtime.onStartup.addListener(()=>{chrome.alarms.create('poll',{periodInMinutes:0.5});poll()});
+chrome.runtime.onInstalled.addListener(async()=>{await release();chrome.alarms.create('poll',{periodInMinutes:0.5});poll()});
+chrome.runtime.onStartup.addListener(async()=>{await release();chrome.alarms.create('poll',{periodInMinutes:0.5});poll()});
 chrome.alarms.onAlarm.addListener(a=>{if(a.name==='poll')poll()});
-chrome.action.onClicked.addListener(()=>chrome.tabs.create({url:BASE}));
+chrome.action.onClicked.addListener(async tab=>{
+ if(!supported(tab.url)){await badge('选页','请先打开 Duo 或 Pro 的具体商品配置页，再点击图标');return}
+ // Wait for an in-flight poll before changing the user-selected target.
+ if(busy){await badge('稍候','正在结束当前操作，请稍后再点一次指定采集页');return}
+ await chrome.storage.local.remove('task');
+ await chrome.storage.local.set({tabId:tab.id,manualBinding:true});
+ await badge('已选','已指定此 Apple 标签页为采集页；关闭后需重新指定');
+ poll();
+});
+chrome.tabs.onRemoved.addListener(async tabId=>{
+ const saved=await chrome.storage.local.get('tabId');
+ if(saved.tabId===tabId)await release();
+});
 chrome.runtime.onMessage.addListener((msg,sender,respond)=>{
  (async()=>{
   const saved=await chrome.storage.local.get(['task','tabId']);
