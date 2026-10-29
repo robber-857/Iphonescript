@@ -8,6 +8,12 @@ function until(fn,timeout=40000){return new Promise((resolve,reject)=>{
  observer.observe(document.documentElement,{subtree:true,childList:true,attributes:true,characterData:true});check();
 })}
 function dialog(){return document.querySelector('[role="dialog"]')}
+function pickupTrigger(){
+ const candidates=document.querySelectorAll('[data-autom^="productLocatorTriggerLink_"], [data-autom="pickUpDetails"] .rf-pickup-quote-overlay-trigger, button');
+ return Array.from(candidates).find(el=>
+  !el.disabled&&el.getAttribute('aria-disabled')!=='true'&&el.getClientRects().length&&
+  (el.matches('[data-autom^="productLocatorTriggerLink_"], [data-autom="pickUpDetails"] .rf-pickup-quote-overlay-trigger')||/^Check availability/i.test(el.textContent.trim())));
+}
 async function collect(task){
  if(active===task.id||finished===task.id)return;
  if(location.href.split('?')[0]!==task.variant.url)return;
@@ -15,14 +21,14 @@ async function collect(task){
  const postcode=task.postcode||'2000';
  let stage='等待库存查询按钮';
  try{
-  const button=await until(()=>Array.from(document.querySelectorAll('button')).find(b=>/^Check availability/.test(b.textContent.trim())));
+  const button=await until(()=>pickupTrigger());
   button.click();stage='等待库存弹窗';await until(dialog);
   stage='填写邮编';
   const input=await until(()=>Array.from(dialog().querySelectorAll('input')).find(e=>e.type==='text'||e.getAttribute('aria-label')==='Postcode'));
   stage='提交邮编并等待门店结果';
   await new Promise((resolve,reject)=>{
    const id=task.id;
-   const timer=setTimeout(()=>{document.removeEventListener('duo-postcode-response',receive);reject(Error('页面输入模块未响应，请确认扩展版本 1.1.0'))},10000);
+   const timer=setTimeout(()=>{document.removeEventListener('duo-postcode-response',receive);reject(Error('页面输入模块未响应，请确认扩展版本 1.1.1'))},10000);
    function receive(event){
     let response;try{response=JSON.parse(event.detail)}catch{return}
     if(response.id!==id)return;

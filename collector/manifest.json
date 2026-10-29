@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Duo 悉尼库存采集器",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "为本机 Duo 后台采集 Apple 澳洲门店自提库存。",
   "permissions": [
     "alarms",
