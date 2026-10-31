@@ -13,7 +13,7 @@ function fixture(){
  f.root={querySelector:s=>s==='.rf-productlocator-main'?main:s.includes('pl_dimensionCapacity')?{value:f.capacity}:s.includes('pl_dimensionColor')?{value:f.colour}:null,querySelectorAll:()=>[...f.rows,...f.recommendations]};
  const context=vm.createContext({document:{querySelector:()=>f.root},chrome:{runtime:{onMessage:{addListener(){}},sendMessage:()=>Promise.resolve({})}},setTimeout,Date});
  vm.runInContext(source,context);
- f.read=()=>context.readInventory(f.root,variant,'2000');
+ f.read=(postcode='2000')=>context.readInventory(f.root,variant,postcode);
  f.wait=timeout=>context.waitInventory(variant,'2000',timeout);
  return f;
 }
@@ -46,4 +46,10 @@ test('incomplete render is retried until all stores arrive',async()=>{
 });
 test('retry timeout retains specific diagnostics',async()=>{
  const f=fixture();f.rows.shift();await assert.rejects(f.wait(1),/缺少门店：Apple Sydney/);
+});
+
+test('Melbourne uses returned current-product stores instead of Sydney allowlist',()=>{
+ const f=fixture();f.postcode='3000';f.rows=[row('R999')];
+ const rows=f.read('3000');assert.equal(rows.length,1);assert.equal(rows[0].store_id,'R999');
+ f.rows=[];assert.throws(()=>f.read('3000'),/没有可确认的门店/);
 });

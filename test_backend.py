@@ -91,6 +91,22 @@ class BackendTests(unittest.TestCase):
         with self.assertRaises(HTTPError):
             self.request('/api/collector/result',dict(id=task['id'],postcode='2000',error='old collector'))
 
+    def test_melbourne_scope_and_old_collector_rejection(self):
+        old=self.request('/api/collector/task')['task']
+        self.request('/api/settings',dict(postcode='3000',interval=300,notifications=False))
+        self.assertEqual(self.request('/api/state')['stores'],{})
+        task=self.request('/api/collector/task')['task']
+        rows=[dict(store_id='R999',store='Fixture Melbourne store',status='unavailable',message='Currently unavailable')]
+        with self.assertRaises(HTTPError):
+            self.request('/api/collector/result',dict(id=old['id'],postcode='3000',scope_version=2,stores=rows))
+        with self.assertRaises(HTTPError):
+            self.request('/api/collector/result',dict(id=task['id'],postcode='3000',stores=rows))
+        self.request('/api/collector/result',dict(id=task['id'],postcode='3000',scope_version=2,stores=rows))
+        self.assertEqual(self.request('/api/state')['stores'],{'R999':'Fixture Melbourne store'})
+        self.request('/api/settings',dict(postcode='2000',interval=300,notifications=False))
+        self.assertEqual(self.request('/api/state')['stores'],server.STORES)
+        self.assertEqual(server.STATE['results'],{})
+
     def test_supported_intervals_and_schedule(self):
         for interval in (30,60,120,300):
             self.request('/api/settings',dict(postcode='2000',interval=interval,notifications=True))

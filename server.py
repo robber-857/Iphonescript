@@ -67,6 +67,14 @@ def notify(message):
             print('\a'+message,flush=True)
     threading.Thread(target=show,daemon=True).start()
 
+def display_stores():
+    if STATE['postcode'] == '2000':
+        return STORES
+    return {row['store_id']: row['store']
+            for result in STATE['results'].values() if not result.get('error')
+            for row in result.get('stores', [])}
+
+
 class Handler(BaseHTTPRequestHandler):
     def send(self,status,body,content_type='application/json; charset=utf-8'):
         if not isinstance(body,bytes):
@@ -83,7 +91,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403,{'error':'Local access only'})
         if self.path == '/api/state':
             with LOCK:
-                return self.send(200,dict(STATE,variants=variants_for(STATE['model']),models=MODELS,phone=PHONE.status(),stores=STORES,token=TOKEN,server_time=time.time()))
+                return self.send(200,dict(STATE,variants=variants_for(STATE['model']),models=MODELS,phone=PHONE.status(),stores=display_stores(),token=TOKEN,server_time=time.time()))
         if self.path == '/api/collector/task':
             if self.headers.get('X-Duo-Token') != TOKEN:
                 return self.send(403,{'error':'Reload collector token'})
@@ -131,7 +139,7 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 if self.path == '/api/start':
                     STATE.update(enabled=True,next_check=time.time())
-                    event('info','已开启监测：'+MODELS[STATE['model']]+'，悉尼 7 家门店')
+                    event('info','已开启监测：'+MODELS[STATE['model']]+' / '+STATE['postcode']+' 附近门店')
                 elif self.path == '/api/pause':
                     STATE.update(enabled=False,next_check=None)
                     event('info','已暂停；正在进行的单个配置查询将完成后停止')
@@ -195,7 +203,13 @@ class Handler(BaseHTTPRequestHandler):
                         event('error',variant['id']+'：'+str(payload['error'])[:220])
                     else:
                         rows=payload['stores']
-                        if len(rows)!=len(STORES) or {r['store_id'] for r in rows}!=set(STORES):
+                        if task['postcode'] != '2000' and payload.get('scope_version') != 2:
+                            raise ValueError('请重新加载采集扩展 1.3.3，并刷新 Apple 商品页以支持邮编门店切换')
+                        if not isinstance(rows,list) or not rows or len(rows)>100 or any(not isinstance(r,dict) or not re.fullmatch(r'R[0-9]+',str(r.get('store_id',''))) or not isinstance(r.get('store'),str) or not r['store'].strip() for r in rows):
+                            raise ValueError('门店列表无效')
+                        if len({r['store_id'] for r in rows}) != len(rows):
+                            raise ValueError('门店列表重复')
+                        if task['postcode'] == '2000' and (len(rows)!=len(STORES) or {r['store_id'] for r in rows}!=set(STORES)):
                             raise ValueError('门店列表不完整')
                         if any(r['status'] not in ('available','unavailable') for r in rows):
                             raise ValueError('无法识别库存状态')

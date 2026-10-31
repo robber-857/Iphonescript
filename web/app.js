@@ -5,7 +5,13 @@ function toast(msg){$('toast').textContent=msg;$('toast').hidden=false;setTimeou
 function element(tag,text,cls){const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e}
 function render(){
  if(!state)return;
- $('model-summary').textContent=state.model==='pro-test'?'iPhone 18 Pro · 256GB Black · 真实库存测试（不自动拨号）':'iPhone Duo · 全部颜色和容量 · 7 家悉尼门店';
+ const postcode=state.postcode||'2000';
+ const city=postcode==='2000'?'悉尼':postcode==='3000'?'墨尔本':'邮编 '+postcode+' 附近';
+ const count=Object.keys(state.stores).length;
+ $('location-title').textContent=city+'门店库存';
+ document.title='Duo / '+city+'库存监测';
+ $('store-scope').textContent=count?'范围：'+Object.values(state.stores).join(' / '):'等待 Apple 返回 '+postcode+' 附近门店';
+ $('model-summary').textContent=state.model==='pro-test'?'iPhone 18 Pro · 256GB Black · 真实库存测试（不自动拨号）':'iPhone Duo · 全部颜色和容量 · '+(count?count+' 家门店':'等待门店数据');
  if(renderedModel!==state.model){
   $('colour').replaceChildren(new Option('全部颜色',''),...Array.from(new Set(state.variants.map(v=>v.colour))).map(v=>new Option(v,v)));
   $('capacity').value='';renderedModel=state.model;
@@ -14,7 +20,7 @@ function render(){
  $('phone-status').textContent=(phone.configured?'已配置 '+phone.destination:'尚未配置')+' · '+(phone.last||'尚未拨号');
  if(!phoneDirty)$('phone-enabled').checked=!!phone.enabled;
  $('phone-test').disabled=!phone.configured;
- $('location').textContent='SYDNEY · '+(state.postcode||'2000');
+ $('location').textContent=(postcode==='2000'?'SYDNEY':postcode==='3000'?'MELBOURNE':'POSTCODE')+' · '+postcode;
  const connected=state.collector_seen&&state.server_time-state.collector_seen<130;
  $('status').textContent=!connected?'等待浏览器采集器连接':state.cookie_cleanup?'等待清理 Apple Cookie':state.running?'正在检查':state.enabled?'监测已开启':'监测已暂停';
  $('dot').className='dot'+(connected&&state.enabled?' on':'');
@@ -36,7 +42,7 @@ function render(){
   for(const {v,r,row,status} of cells){const td=element('td','');const a=element('a',status==='available'?'● 可自提':status==='unavailable'?'暂无库存':'待确认','cell '+status);a.href=v.url;a.target='_blank';a.rel='noopener';a.title=(r?.error?'本次查询失败：'+r.error+'\n':'')+'上次成功：'+stamp(r?.checked)+'\n'+(row?.message||'尚无有效数据')+'\n点击打开 Apple 官网';td.append(a);tr.append(td)}
   body.append(tr);
  }
- if(!body.children.length){const td=element('td','当前筛选下没有已确认有货的门店');td.colSpan=variants.length+1;const tr=element('tr','');tr.append(td);body.append(tr)}
+ if(!body.children.length){const td=element('td',count?'当前筛选下没有已确认有货的门店':'等待首次采集 '+postcode+' 附近门店；请确认扩展已更新至 1.3.3');td.colSpan=variants.length+1;const tr=element('tr','');tr.append(td);body.append(tr)}
  $('summary').textContent=`${available} 个有货组合 · ${unknown} 个待确认`;
  if(!dirty){$('model').value=state.model||'duo';$('postcode').value=state.postcode||'2000';$('interval').value=state.interval;$('notifications').checked=state.notifications;$('clear-cookies').checked=!!state.clear_apple_cookies}
  $('events').replaceChildren();$('count').textContent=state.events.length?`/ ${state.events.length}`:'';

@@ -28,8 +28,9 @@ function readInventory(root,variant,postcode){
  for(const el of list.querySelectorAll('[data-autom^="pickupStore_"]')){
   const option=el.querySelector('input');
   if(!option){issues.push('门店行缺少选项');continue}
-  if(!stores[option.value])continue;
-  const store=stores[option.value];
+  if(postcode==='2000'&&!stores[option.value])continue;
+  if(!/^R[0-9]+$/.test(option.value)){issues.push('门店编号无效');continue}
+  const store=stores[option.value]||(el.querySelector('.form-selector-title')?.textContent||'').replace(/\s+/g,' ').trim()||('Apple '+option.value);
   if(seen.has(option.value)){issues.push('重复门店：'+store);continue}
   seen.add(option.value);
   const part=option.getAttribute('data-pl-partnumber');
@@ -42,8 +43,9 @@ function readInventory(root,variant,postcode){
   if(status==='unknown')issues.push(store+' 文案无法识别：'+(message.slice(0,90)||'空白')+(option.disabled?'（选项禁用）':''));
   rows.push({store_id:option.value,store,status,message,part});
  }
- const missing=Object.keys(stores).filter(id=>!seen.has(id));
+ const missing=Object.keys(postcode==='2000'?stores:{}).filter(id=>!seen.has(id));
  if(missing.length)issues.unshift('缺少门店：'+missing.map(id=>stores[id]).join('、'));
+ if(!rows.length)issues.unshift('当前邮编没有可确认的门店数据');
  if(parts.size>1)issues.unshift('当前列表混入多个商品编号');
  if(issues.length)throw Error(issues.join('；').slice(0,460));
  return rows;
@@ -63,6 +65,29 @@ function pickupTrigger(){
   !el.disabled&&el.getAttribute('aria-disabled')!=='true'&&el.getClientRects().length&&
   (el.matches('[data-autom^="productLocatorTriggerLink_"], [data-autom="pickUpDetails"] .rf-pickup-quote-overlay-trigger')||/^Check availability/i.test(el.textContent.trim())));
 }
+function pickupDialog(){
+ const root=dialog();
+ return root?.querySelector('input[data-autom="zipCode"]')&&root.getClientRects().length?root:null;
+}
+async function openPickup(){
+ let prepared=false;
+ try{
+  const entry=await until(()=>{
+   const opened=pickupDialog();
+   if(opened)return {opened};
+   const button=pickupTrigger();
+   if(button)return {button};
+   const noTrade=document.querySelector('input[data-autom="choose-noTradeIn"]');
+   const selected=document.querySelector('input[name="tradeupinline"]:checked');
+   if(!prepared&&noTrade&&!selected&&!noTrade.disabled){prepared=true;noTrade.click()}
+   return null;
+  });
+  if(entry.button)entry.button.click();
+  await until(pickupDialog);
+ }catch{
+  throw Error('当前商品页未出现自提查询入口或库存弹窗；尚未提交邮编，无法确认库存。请检查 Apple 页面是否正常提供 Check availability 或门店入口');
+ }
+}
 async function collect(task){
  if(active===task.id||finished===task.id)return;
  if(location.href.split('?')[0]!==task.variant.url)return;
@@ -70,8 +95,7 @@ async function collect(task){
  const postcode=task.postcode||'2000';
  let stage='等待库存查询按钮';
  try{
-  const button=await until(()=>pickupTrigger());
-  button.click();stage='等待库存弹窗';await until(dialog);
+  await openPickup();
   stage='填写邮编';
   const input=await until(()=>Array.from(dialog().querySelectorAll('input')).find(e=>e.type==='text'||e.getAttribute('aria-label')==='Postcode'));
   stage='提交邮编并等待门店结果';
@@ -94,7 +118,7 @@ async function collect(task){
   if(expand&&expand.getAttribute('aria-expanded')!=='true')expand.click();
   stage='校验配置和库存';
   const rows=await waitInventory(task.variant,postcode);
-  const response=await chrome.runtime.sendMessage({type:'result',result:{id:task.id,postcode,stores:rows}});
+  const response=await chrome.runtime.sendMessage({type:'result',result:{id:task.id,postcode,scope_version:2,stores:rows}});
   if(response?.error)throw Error(response.error);
   finished=task.id;
  }catch(e){try{await chrome.runtime.sendMessage({type:'result',result:{id:task.id,postcode,error:stage+'：'+e.message}})}catch{/* Extension may have been reloaded while this page was running. */}}
