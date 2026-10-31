@@ -19,3 +19,16 @@ assert.equal(compileFilter('example.com', 'sender'), 'from:"example.com"');
 assert.equal(compileFilter('sender@example.com', 'all_phrase'), '"sender@example.com"');
 assert.equal(compileFilter('Gift from sender@example.com'), 'subject:"Gift from sender@example.com"');
 console.log('PASS: sender mode and automatic email detection');
+
+const {compileSearch}=require('./web/app.js');
+const epoch=(y,m,d)=>Math.floor(new Date(y,m-1,d).getTime()/1000);
+assert.equal(compileSearch('sender@example.com','sender','2026-10-01','2026-10-31'), `(from:"sender@example.com") after:${epoch(2026,10,1)} before:${epoch(2026,11,1)}`);
+assert.equal(compileSearch('','subject_phrase','2026-10-31','2026-10-31'), `after:${epoch(2026,10,31)} before:${epoch(2026,11,1)}`);
+assert.equal(compileSearch('','subject_phrase','','2024-02-29'), `before:${epoch(2024,3,1)}`);
+assert.equal(compileSearch('','subject_phrase','2026-10-04','2026-10-04'), `after:${epoch(2026,10,4)} before:${epoch(2026,10,5)}`);
+assert.equal(compileSearch('from:a OR from:b','advanced','2026-10-01',''), `(from:a OR from:b) after:${epoch(2026,10,1)}`);
+assert.equal(compileSearch('Chen sent you','subject_phrase'),compileFilter('Chen sent you'));
+assert.throws(()=>compileSearch('','subject_phrase'));
+assert.throws(()=>compileSearch('x','subject_phrase','2026-11-01','2026-10-31'),/开始日期/);
+assert.throws(()=>compileSearch('x','subject_phrase','2026-02-30',''),/有效日期/);
+console.log('PASS: date range, inclusive end, leap day, DST day, open bounds and invalid ranges');

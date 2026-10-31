@@ -8,7 +8,24 @@ function compileFilter(input, mode = 'subject_phrase') {
   if (mode === 'sender' || (mode === 'subject_phrase' && /^[^\s<>:@]+@[^\s<>:@]+\.[^\s<>:@]+$/.test(value))) return 'from:"' + value + '"';
   return (mode === 'subject_phrase' ? 'subject:' : '') + '"' + value + '"';
 }
-if (typeof module !== 'undefined') module.exports = {compileFilter};
+function compileSearch(input, mode, start = '', end = '') {
+  function day(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('请选择有效日期。');
+    const [y,m,d] = value.split('-').map(Number);
+    const date = new Date(y,m-1,d);
+    if (y < 1000 || date.getFullYear()!==y || date.getMonth()!==m-1 || date.getDate()!==d) throw new Error('请选择有效日期。');
+    return date;
+  }
+  const from=start?day(start):null, through=end?day(end):null;
+  if(from && through && from>through) throw new Error('开始日期不能晚于结束日期。');
+  const base=input.trim()?compileFilter(input,mode):'';
+  if(!base&&!from&&!through) throw new Error('请输入关键词或选择时间段。');
+  const parts=base?[from||through?'('+base+')':base]:[];
+  if(from) parts.push('after:'+Math.floor(from.getTime()/1000));
+  if(through){through.setDate(through.getDate()+1);parts.push('before:'+Math.floor(through.getTime()/1000));}
+  return parts.join(' ');
+}
+if (typeof module !== 'undefined') module.exports = {compileFilter,compileSearch};
 if (typeof document !== 'undefined') {
 const $ = id => document.getElementById(id);
 let restoredSearch = false;
@@ -75,13 +92,13 @@ function render() {
   if(!state.oauth_configured)$('oauth-setup').open=true;
   if(connected&&rememberedConnection!==state.account){rememberedConnection=state.account;if(!accounts.includes(state.account)){accounts.push(state.account);saveAccounts();}}
   if(!connected)rememberedConnection='';
-  for(const id of ['connect','disconnect','query','match-mode','batch-size']) $(id).disabled=!!busy;
+  for(const id of ['connect','disconnect','query','match-mode','date-start','date-end','clear-dates','batch-size']) $(id).disabled=!!busy;
   $('connect').disabled=busy||!state.oauth_configured;
   $('search').disabled=busy||!connected;
   $('search').textContent=busy?'处理中…':'搜索邮件 →';
   let effectiveQuery = '';
-  try {effectiveQuery = compileFilter($('query').value, $('match-mode').value);} catch {}
-  $('query-preview').textContent = effectiveQuery ? '将搜索：' + effectiveQuery : '输入完整短语或发件邮箱地址。';
+  try {effectiveQuery = compileSearch($('query').value, $('match-mode').value, $('date-start').value, $('date-end').value);} catch(error) {effectiveQuery='';}
+  $('query-preview').textContent = effectiveQuery ? '将搜索：' + effectiveQuery : '输入关键词或选择时间段；开始日期不能晚于结束日期。';
   $('active-query').textContent = state.searched ? '当前结果对应：' + state.query : '';
   const changed=state.searched && effectiveQuery!==state.query;
   $('batch').disabled=busy||!connected||!state.searched||state.cursor>=state.total||changed;
@@ -102,13 +119,16 @@ function render() {
   const rowKey=JSON.stringify([state.rows,state.searched,state.total]);
   if(lastRows!==rowKey){lastRows=rowKey;renderTable();}
 }
-async function refresh(){const res=await fetch('/api/state');if(!res.ok)throw new Error('后台连接失败');state=await res.json();token=state.token;if(!restoredSearch){restoredSearch=true;if(state.searched&&state.query){$('match-mode').value=/[:"{}()]/.test(state.query)?'advanced':'subject_phrase';$('query').value=state.query;}}render();}
+async function refresh(){const res=await fetch('/api/state');if(!res.ok)throw new Error('后台连接失败');state=await res.json();token=state.token;if(!restoredSearch){restoredSearch=true;if(state.searched&&state.query){$('match-mode').value=/[:"{}()]/.test(state.query)?'advanced':'subject_phrase';$('query').value=state.query;try{const saved=JSON.parse(sessionStorage.getItem('cardbox-filter'));if(saved?.query===state.query){$('query').value=saved.input;$('match-mode').value=saved.mode;$('date-start').value=saved.start||'';$('date-end').value=saved.end||'';}}catch{}}}render();}
 $('connect-form').onsubmit=async e=>{e.preventDefault();pending=true;localError='';render();try{const response=await request('oauth/start',{account:$('account').value});const data=await response.json();window.location.assign(data.url);}catch(error){localError=error.message;pending=false;render();}};
 $('oauth-file').onchange=async()=>{const file=$('oauth-file').files[0];if(!file)return;try{if(file.size>16000)throw Error('客户端 JSON 文件过大。');const config=JSON.parse(await file.text());await action('oauth/config',{config});if(state.oauth_configured)$('oauth-setup').open=false;}catch(error){localError=error.message;notice(localError);}finally{$('oauth-file').value='';}};
 $('disconnect').onclick=()=>action('disconnect');
-$('search-form').onsubmit=e=>{e.preventDefault();try{const query=compileFilter($('query').value,$('match-mode').value);page=1;action('search',{query});}catch(error){localError=error.message;notice(localError);}};
+$('search-form').onsubmit=e=>{e.preventDefault();try{const query=compileSearch($('query').value,$('match-mode').value,$('date-start').value,$('date-end').value);try{sessionStorage.setItem('cardbox-filter',JSON.stringify({query,input:$('query').value,mode:$('match-mode').value,start:$('date-start').value,end:$('date-end').value}));}catch{}page=1;action('search',{query});}catch(error){localError=error.message;notice(localError);}};
 $('match-mode').onchange=()=>{localError='';$('query').placeholder=$('match-mode').value==='advanced'?'例如 from:someone@gmail.com subject:"Gift Card"':$('match-mode').value==='sender'?'例如 sender@example.com':'例如 Chen sent you 或 sender@example.com';render();};
 $('query').oninput=render;
+for(const id of ['date-start','date-end'])$(id).oninput=()=>{localError='';render();};
+$('clear-dates').onclick=()=>{$('date-start').value='';$('date-end').value='';localError='';render();};
+$('date-help').textContent='包含开始和结束当天，按本机时区（'+Intl.DateTimeFormat().resolvedOptions().timeZone+'）筛选；留空的一端不限，可只选时间段。';
 $('batch').onclick=()=>action('batch',{count:Number($('batch-size').value)});
 $('pause').onclick=()=>action(state.paused?'resume':'pause');
 $('retry').onclick=()=>action('retry',{count:100});

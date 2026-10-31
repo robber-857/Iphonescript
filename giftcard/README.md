@@ -30,3 +30,5 @@
 Google 官方说明：https://developers.google.com/identity/protocols/oauth2/native-app 。使用授权码流程、PKCE S256、10 分钟有效且一次性校验的 state、本机回调；仅申请 `gmail.readonly`。测试模式/Workspace 管理策略可能限制可授权的邮箱；对外发布应按 Google 要求处理应用验证。
 
 搜索构造验证：`node test_search.cjs`。
+
+时间段筛选：可填写开始日期、结束日期或其中一项，也可不填关键词只按日期搜索。包含起止当天，按浏览器所在电脑时区换算为 Gmail 的秒级时间条件（避免日期字符串被按 PST 解释）。更改日期后需重新搜索；刷新同一标签页会恢复当前结果对应的筛选条件。
