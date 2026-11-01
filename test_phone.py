@@ -1,5 +1,8 @@
 import json
 import io
+import socket
+import ssl
+from http.client import IncompleteRead
 import tempfile
 import threading
 import unittest
@@ -66,6 +69,54 @@ class PhoneTests(unittest.TestCase):
         self.assertIn('Invalid From', reports[0])
         for key in ('token', 'from'):
             self.assertNotIn(self.cfg[key], reports[0])
+
+    def test_request_failures_are_classified_without_retry_or_secret_leak(self):
+        cases = [
+            (TimeoutError('secret'), '超时'),
+            (URLError(TimeoutError('secret')), '超时'),
+            (URLError(ssl.SSLCertVerificationError(1, 'secret')), '证书校验失败'),
+            (ssl.SSLError(1, 'secret'), 'TLS/SSL'),
+            (URLError(socket.gaierror(-2, 'secret')), 'DNS'),
+            (URLError(ConnectionRefusedError('secret')), '连接被拒绝'),
+            (ConnectionResetError('secret'), '连接中断或被重置'),
+            (IncompleteRead(b'secret', 10), 'HTTP 响应异常'),
+            (URLError('secret'), '无法进一步分类'),
+        ]
+        for error, expected in cases:
+            with self.subTest(expected=expected, error=type(error).__name__):
+                self.phone.usage['last_attempt'] = 0
+                done = threading.Event()
+                reports = []
+                with patch('phone.urlopen', side_effect=error) as request:
+                    self.phone.call('test', lambda msg: (reports.append(msg), done.set()), test=True)
+                    self.assertTrue(done.wait(3))
+                    self.assertEqual(request.call_count, 1)
+                self.assertIn(expected, reports[0])
+                self.assertIn('结果不明', reports[0])
+                self.assertIn('不会自动重拨', reports[0])
+                self.assertNotIn('secret', reports[0])
+                self.assertEqual(Phone(self.temp.name).status()['last'], reports[0])
+                with self.assertRaisesRegex(ValueError, '冷却'):
+                    self.phone.call('again', lambda _: None, test=True)
+
+    def test_invalid_response_is_reported_without_losing_callback(self):
+        for body, expected in [(b'<html>private</html>', '响应解析失败'),
+                               (b'\xff', '响应解析失败'),
+                               (b'[]', '响应格式异常'),
+                               (b'null', '响应格式异常'),
+                               (b'{}', '缺少通话 SID')]:
+            with self.subTest(body=body):
+                self.phone.usage['last_attempt'] = 0
+                done = threading.Event()
+                reports = []
+                with patch('phone.urlopen') as request:
+                    request.return_value.__enter__.return_value.read.return_value = body
+                    self.phone.call('test', lambda msg: (reports.append(msg), done.set()), test=True)
+                    self.assertTrue(done.wait(3))
+                    self.assertEqual(request.call_count, 1)
+                self.assertIn(expected, reports[0])
+                self.assertIn('不会自动重拨', reports[0])
+                self.assertNotIn('private', reports[0])
 
     def test_non_json_provider_error_preserves_report(self):
         error = HTTPError('https://api.twilio.com', 502, 'Bad Gateway', {}, io.BytesIO(b'<html>error</html>'))

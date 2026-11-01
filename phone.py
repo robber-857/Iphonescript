@@ -2,6 +2,9 @@
 import base64
 import json
 import re
+import socket
+import ssl
+import errno
 import threading
 import time
 from datetime import datetime, timezone
@@ -9,6 +12,7 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 from urllib.error import HTTPError, URLError
+from http.client import HTTPException
 
 class Phone:
     def __init__(self, directory):
@@ -29,6 +33,33 @@ class Phone:
         temp = path.with_suffix('.tmp')
         temp.write_text(json.dumps(value), encoding='utf-8')
         temp.replace(path)
+
+    @staticmethod
+    def request_error_detail(exc):
+        # Only emit fixed descriptions; raw exceptions can contain proxy
+        # credentials, request URLs, or other private configuration.
+        reason = exc.reason if isinstance(exc, URLError) else exc
+        error_number = getattr(reason, 'errno', None)
+        windows_error = getattr(reason, 'winerror', None)
+        if isinstance(reason, ssl.SSLCertVerificationError):
+            return 'HTTPS 证书校验失败：请检查电脑时间、证书及代理/安全软件的 HTTPS 拦截'
+        if isinstance(reason, ssl.SSLError):
+            return 'TLS/SSL 连接错误：请检查代理、安全软件及 Python 的 TLS 环境'
+        if isinstance(reason, (TimeoutError, socket.timeout)) or error_number == errno.ETIMEDOUT or windows_error == 10060:
+            return '连接或读取响应超时（请求超时设置为 20 秒）：请检查网络和代理'
+        if isinstance(reason, socket.gaierror):
+            return 'DNS 域名解析失败：请检查 DNS、网络及代理地址'
+        if isinstance(reason, ConnectionRefusedError) or error_number == errno.ECONNREFUSED or windows_error == 10061:
+            return '网络连接被拒绝：请检查代理、防火墙和网络访问限制'
+        if isinstance(reason, (ConnectionResetError, ConnectionAbortedError, BrokenPipeError)) or windows_error in (10053, 10054):
+            return '网络连接中断或被重置：请检查网络、代理及安全软件'
+        if error_number in (errno.ENETUNREACH, errno.EHOSTUNREACH) or windows_error in (10051, 10065):
+            return '网络或目标主机不可达：请检查网络连接、路由及代理'
+        if isinstance(reason, ValueError):
+            return '响应解析失败：返回内容不是有效的 JSON 或文本编码异常'
+        if isinstance(reason, HTTPException):
+            return 'HTTP 响应异常或不完整：请检查网络及代理'
+        return '网络请求异常（无法进一步分类）：请检查网络、代理及防火墙'
 
     def status(self):
         with self.lock:
@@ -86,8 +117,8 @@ class Phone:
                 with urlopen(request, timeout=20) as response:
                     result = json.load(response)
                 status = 'Twilio 已接受拨号请求（不代表已接听），请在 Twilio 通话日志查看结果'
-                if not result.get('sid'):
-                    status = 'Twilio 返回异常，请检查通话日志；不会自动重拨'
+                if not isinstance(result, dict) or not result.get('sid'):
+                    status = '电话请求结果不明：响应格式异常或缺少通话 SID；请查看 Twilio 通话日志；不会自动重拨'
             except HTTPError as exc:
                 status = f'电话请求失败（HTTP {exc.code}），请检查 Twilio 号码、余额和拨号权限'
                 try:
@@ -102,8 +133,8 @@ class Phone:
                         status = f'电话请求失败（HTTP {exc.code} / Twilio {code}）：{error_message}'
                 except (ValueError, OSError, AttributeError):
                     pass
-            except (URLError, OSError, ValueError):
-                status = '电话请求结果不明，请查看 Twilio 通话日志；不会自动重拨'
+            except (URLError, OSError, ValueError, HTTPException) as exc:
+                status = '电话请求结果不明：' + self.request_error_detail(exc) + '；请查看 Twilio 通话日志；不会自动重拨'
             with self.lock:
                 self.usage['last_status'] = status
                 self.write('phone-usage.json', self.usage)
