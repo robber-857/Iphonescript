@@ -108,11 +108,11 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(server.STATE['results'],{})
 
     def test_supported_intervals_and_schedule(self):
-        for interval in (30,60,120,300):
+        for interval in (30,60,120,300,600,900,1200,1800):
             self.request('/api/settings',dict(postcode='2000',interval=interval,notifications=True))
             self.assertEqual(server.STATE['interval'],interval)
             self.assertAlmostEqual(server.STATE['next_check']-time.time(),interval,delta=2)
-        for interval in (0,29,600,900,1800):
+        for interval in (0,29,301,1500,1801):
             with self.assertRaises(HTTPError) as ctx:
                 self.request('/api/settings',dict(postcode='2000',interval=interval,notifications=True))
             self.assertEqual(ctx.exception.code,400)

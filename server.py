@@ -149,7 +149,7 @@ class Handler(BaseHTTPRequestHandler):
                     STATE.update(enabled=True,next_check=time.time())
                 elif self.path == '/api/settings':
                     interval=int(payload['interval'])
-                    if interval not in (30,60,120,300):
+                    if interval not in (30,60,120,300,600,900,1200,1800):
                         raise ValueError('请选择支持的检查间隔')
                     if not isinstance(payload.get('notifications'),bool):
                         raise ValueError('提醒开关格式错误')
