@@ -3,7 +3,7 @@ import re
 
 BASE = 'https://www.apple.com/shop/buy-iphone/iphone-duo/7.6-inch-display-'
 VARIANTS = [dict(id=f'{capacity}-{colour}', capacity=capacity.upper(), colour=label,
-                 url=BASE+capacity+'-'+colour)
+                 url=BASE+capacity+'-'+colour+'-unlocked')
             for colour, label in [('night-sky', 'Night Sky'), ('star-white', 'Star White')]
             for capacity in ['256gb', '512gb', '1tb', '2tb']]
 STORES = {}  # US stores are discovered from each ZIP query.
@@ -13,7 +13,7 @@ for variant in VARIANTS:
     variant['model'] = 'iPhone Duo'
 PRO_VARIANTS = [dict(id='pro-256gb-black', model='iPhone 18 Pro', capacity='256GB',
                      colour='Black', test=True,
-                     url='https://www.apple.com/shop/buy-iphone/iphone-18-pro/6.3-inch-display-256gb-black')]
+                     url='https://www.apple.com/shop/buy-iphone/iphone-18-pro/6.3-inch-display-256gb-black-unlocked')]
 MODELS = {'duo': 'iPhone Duo', 'pro-test': 'iPhone 18 Pro（真实库存测试）'}
 
 def variants_for(model):
@@ -21,9 +21,9 @@ def variants_for(model):
 
 def classify(disabled, message):
     text = message.lower()
-    if 'currently unavailable' in text or 'unavailable for pickup' in text:
+    if re.search(r'currently unavailable|unavailable for pickup|not available(?: today)?', text):
         return 'unavailable'
-    if not disabled and re.search(r'available|pick.?up|today|tomorrow', text):
+    if not disabled and re.match(r'available\b', text.strip()):
         return 'available'
     return 'unknown'
 

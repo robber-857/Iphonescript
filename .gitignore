@@ -3,6 +3,8 @@
 .tmp/
 __pycache__/
 data/
+data-us/
+.playwright-cli/
 output/
 apple-product.html
 fulfillment-sample.json

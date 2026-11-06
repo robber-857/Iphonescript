@@ -20,7 +20,7 @@ class StockTests(unittest.TestCase):
     def test_scope(self):
         self.assertEqual(len(VARIANTS),8)
         self.assertEqual(len({v['id'] for v in VARIANTS}),8)
-        self.assertEqual(len(STORES),7)
+        self.assertEqual(STORES,{})
         self.assertNotIn('R483',STORES)
 
 if __name__=='__main__':

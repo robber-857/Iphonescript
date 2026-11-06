@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
-const url='https://www.apple.com/au/shop/buy-iphone/iphone-duo/7.6-inch-display-256gb-night-sky';
+const url='https://www.apple.com/shop/buy-iphone/iphone-duo/7.6-inch-display-256gb-night-sky-unlocked';
 function fixture(saved={},present=true){
  const state={...saved},calls=[],listeners={};
  const event=name=>({addListener:fn=>listeners[name]=fn});

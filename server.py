@@ -29,7 +29,7 @@ STATE.update(collector_seen=None,task=None,queue=[])
 STATE.setdefault('postcode','10001')
 STATE.setdefault('model','duo')
 STATE.setdefault('clear_apple_cookies',False)
-STATE.setdefault('cookie_cleanup',None)
+STATE['cookie_cleanup']=None  # A restart invalidates all outstanding browser leases.
 PHONE = Phone(DATA)
 PENDING_PHONE = []
 
@@ -69,7 +69,7 @@ def notify(message):
 
 def display_stores():
     return {row['store_id']: row['store']
-            for result in STATE['results'].values() if not result.get('error')
+            for result in STATE['results'].values()
             for row in result.get('stores', [])}
 
 
@@ -127,11 +127,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send(200,(ROOT/'web'/files[self.path]).read_bytes(),mime[self.path])
 
     def do_POST(self):
+        if self.headers.get('Host') not in ('127.0.0.1:8766','localhost:8766'):
+            return self.send(403,{'error':'Local access only'})
         if self.headers.get('X-Duo-Token') != TOKEN:
             return self.send(403,{'error':'请刷新页面后重试'})
         try:
             length=int(self.headers.get('Content-Length','0'))
-            if length>4096:
+            if length<0 or length>65536:
                 raise ValueError('请求过大')
             payload=json.loads(self.rfile.read(length) or b'{}')
             with LOCK:
@@ -139,8 +141,9 @@ class Handler(BaseHTTPRequestHandler):
                     STATE.update(enabled=True,next_check=time.time())
                     event('info','已开启监测：'+MODELS[STATE['model']]+' / '+STATE['postcode']+' 附近门店')
                 elif self.path == '/api/pause':
-                    STATE.update(enabled=False,next_check=None)
-                    event('info','已暂停；正在进行的单个配置查询将完成后停止')
+                    STATE.update(enabled=False,next_check=None,task=None,queue=[],running=False,current=None,cookie_cleanup=None)
+                    PENDING_PHONE.clear()
+                    event('info','已暂停监测，进行中的采集结果已作废')
                 elif self.path == '/api/check':
                     if STATE['running']:
                         return self.send(409,{'error':'正在检查，请等待当前轮次结束'})
@@ -167,7 +170,7 @@ class Handler(BaseHTTPRequestHandler):
                     STATE.update(interval=interval,notifications=payload['notifications'])
                     if changed:
                         PENDING_PHONE.clear()
-                        STATE.update(postcode=postcode,model=model,results={},task=None,queue=[],running=False,current=None,
+                        STATE.update(postcode=postcode,model=model,results={},task=None,queue=[],running=False,current=None,cookie_cleanup=None,
                                      next_check=time.time() if STATE['enabled'] else None)
                         event('info','监测配置：'+MODELS[model]+' / '+postcode+'，旧结果已清空')
                     elif STATE['enabled'] and not STATE['running']:
@@ -192,7 +195,7 @@ class Handler(BaseHTTPRequestHandler):
                     task=STATE.get('task')
                     if not task or payload.get('id')!=task['id']:
                         return self.send(409,{'error':'Task expired'})
-                    if payload.get('postcode','10001')!=task.get('postcode','10001'):
+                    if payload.get('postcode')!=task['postcode']:
                         return self.send(409,{'error':'采集结果邮编不匹配，请刷新采集扩展'})
                     variant=task['variant']
                     result=STATE['results'].setdefault(variant['id'],dict(stores=[],checked=None))
@@ -202,12 +205,12 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         rows=payload['stores']
                         if payload.get('scope_version') != 2:
-                            raise ValueError('请重新加载采集扩展 1.4.0，并刷新 Apple 商品页以支持邮编门店切换')
+                            raise ValueError('请重新加载采集扩展 1.4.1，并刷新 Apple 商品页以支持邮编门店切换')
                         if not isinstance(rows,list) or not rows or len(rows)>100 or any(not isinstance(r,dict) or not re.fullmatch(r'R[0-9]+',str(r.get('store_id',''))) or not isinstance(r.get('store'),str) or not r['store'].strip() for r in rows):
                             raise ValueError('门店列表无效')
                         if len({r['store_id'] for r in rows}) != len(rows):
                             raise ValueError('门店列表重复')
-                        if any(r['status'] not in ('available','unavailable') for r in rows):
+                        if any(r.get('status') not in ('available','unavailable') or not isinstance(r.get('message'),str) for r in rows):
                             raise ValueError('无法识别库存状态')
                         changes=stock_changes(result.get('stores',[]),rows)
                         STATE['results'][variant['id']]=dict(stores=rows,checked=time.time(),attempted=time.time(),error=None)

@@ -1,4 +1,4 @@
-import json, threading, unittest
+import copy, json, threading, unittest
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 from http.server import ThreadingHTTPServer
@@ -7,6 +7,11 @@ import server
 from monitor import VARIANTS, PRO_VARIANTS
 
 class USTests(unittest.TestCase):
+ def setUp(self):
+  self.original=copy.deepcopy(server.STATE)
+ def tearDown(self):
+  server.STATE.clear();server.STATE.update(self.original)
+  server.PENDING_PHONE.clear()
  def test_urls(self):
   for v in VARIANTS+PRO_VARIANTS:
    self.assertTrue(v['url'].startswith('https://www.apple.com/shop/'))
@@ -16,7 +21,7 @@ class USTests(unittest.TestCase):
    handler=object.__new__(server.Handler)
    raw=json.dumps(body).encode()
    handler.path=path
-   handler.headers={'X-Duo-Token':server.TOKEN,'Content-Length':str(len(raw))}
+   handler.headers={'Host':'127.0.0.1:8766','X-Duo-Token':server.TOKEN,'Content-Length':str(len(raw))}
    handler.rfile=io.BytesIO(raw)
    result=[]
    handler.send=lambda code,body:result.append((code,body))

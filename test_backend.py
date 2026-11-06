@@ -9,10 +9,13 @@ from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 import server
 
+# Synthetic stores only; never real inventory.
+FIXTURE_STORES = {'R250': 'Fixture West 14th Street', 'R095': 'Fixture Fifth Avenue'}
+
 class BackendTests(unittest.TestCase):
     def setUp(self):
         self.original=copy.deepcopy(server.STATE)
-        server.STATE.update(enabled=True,model='duo',postcode='2000',running=False,next_check=0,task=None,queue=[],results={},events=[],clear_apple_cookies=False,cookie_cleanup=None)
+        server.STATE.update(enabled=True,model='duo',postcode='10001',running=False,next_check=0,task=None,queue=[],results={},events=[],clear_apple_cookies=False,cookie_cleanup=None)
         server.PENDING_PHONE.clear()
         self.mock_phone=patch.object(server.PHONE,'call').start()
         self.mock_save=patch.object(server,'save').start()
@@ -26,8 +29,10 @@ class BackendTests(unittest.TestCase):
         patch.stopall()
 
     def request(self,path,payload=None,token=True):
-        headers={'Host':'127.0.0.1:8765'}
+        headers={'Host':'127.0.0.1:8766'}
         if token:headers['X-Duo-Token']=server.TOKEN
+        if path=='/api/collector/result' and payload is not None:
+            payload=dict(postcode=server.STATE['postcode'],scope_version=2,**payload) if 'postcode' not in payload and 'scope_version' not in payload else payload
         body=None if payload is None else json.dumps(payload).encode()
         req=Request(f'http://127.0.0.1:{self.http.server_port}'+path,data=body,headers=headers)
         with urlopen(req) as r:return json.load(r)
@@ -35,7 +40,7 @@ class BackendTests(unittest.TestCase):
     def test_full_cycle_and_dedup(self):
         for i in range(8):
             task=self.request('/api/collector/task')['task']
-            rows=[dict(store_id=sid,store=name,status='unavailable',message='Currently unavailable') for sid,name in server.STORES.items()]
+            rows=[dict(store_id=sid,store=name,status='unavailable',message='Currently unavailable') for sid,name in FIXTURE_STORES.items()]
             self.request('/api/collector/result',dict(id=task['id'],stores=rows))
         self.assertIsNone(self.request('/api/collector/task')['task'])
         self.assertEqual(len(server.STATE['results']),8)
@@ -65,7 +70,7 @@ class BackendTests(unittest.TestCase):
 
     def test_error_preserves_last_success(self):
         task=self.request('/api/collector/task')['task']
-        server.STATE['results'][task['variant']['id']]={'stores':[{'store_id':'R238','status':'available'}],'checked':123}
+        server.STATE['results'][task['variant']['id']]={'stores':[{'store_id':'R250','status':'available'}],'checked':123}
         self.request('/api/collector/result',dict(id=task['id'],error='HTTP 541'))
         result=server.STATE['results'][task['variant']['id']]
         self.assertEqual(result['checked'],123)
@@ -79,52 +84,52 @@ class BackendTests(unittest.TestCase):
     def test_postcode_validation_and_new_task(self):
         old=self.request('/api/collector/task')['task']
         server.STATE['results']={'old':{'checked':1}}
-        for invalid in ('200','20000','abcd','２０００'):
+        for invalid in ('200','123456','abcd','２０００'):
             with self.assertRaises(HTTPError) as ctx:
                 self.request('/api/settings',dict(postcode=invalid,interval=300,notifications=True))
             self.assertEqual(ctx.exception.code,400)
-        self.request('/api/settings',dict(postcode='2150',interval=300,notifications=True))
+        self.request('/api/settings',dict(postcode='02108',interval=300,notifications=True))
         self.assertEqual(server.STATE['results'],{})
         task=self.request('/api/collector/task')['task']
-        self.assertEqual(task['postcode'],'2150')
+        self.assertEqual(task['postcode'],'02108')
         self.assertNotEqual(task['id'],old['id'])
         with self.assertRaises(HTTPError):
-            self.request('/api/collector/result',dict(id=task['id'],postcode='2000',error='old collector'))
+            self.request('/api/collector/result',dict(id=task['id'],postcode='10001',error='old collector'))
 
-    def test_melbourne_scope_and_old_collector_rejection(self):
+    def test_zip_scope_and_old_collector_rejection(self):
         old=self.request('/api/collector/task')['task']
-        self.request('/api/settings',dict(postcode='3000',interval=300,notifications=False))
+        self.request('/api/settings',dict(postcode='94105',interval=300,notifications=False))
         self.assertEqual(self.request('/api/state')['stores'],{})
         task=self.request('/api/collector/task')['task']
-        rows=[dict(store_id='R999',store='Fixture Melbourne store',status='unavailable',message='Currently unavailable')]
+        rows=[dict(store_id='R999',store='Fixture SF store',status='unavailable',message='Currently unavailable')]
         with self.assertRaises(HTTPError):
-            self.request('/api/collector/result',dict(id=old['id'],postcode='3000',scope_version=2,stores=rows))
+            self.request('/api/collector/result',dict(id=old['id'],postcode='94105',scope_version=2,stores=rows))
         with self.assertRaises(HTTPError):
-            self.request('/api/collector/result',dict(id=task['id'],postcode='3000',stores=rows))
-        self.request('/api/collector/result',dict(id=task['id'],postcode='3000',scope_version=2,stores=rows))
-        self.assertEqual(self.request('/api/state')['stores'],{'R999':'Fixture Melbourne store'})
-        self.request('/api/settings',dict(postcode='2000',interval=300,notifications=False))
-        self.assertEqual(self.request('/api/state')['stores'],server.STORES)
+            self.request('/api/collector/result',dict(id=task['id'],postcode='94105',stores=rows))
+        self.request('/api/collector/result',dict(id=task['id'],postcode='94105',scope_version=2,stores=rows))
+        self.assertEqual(self.request('/api/state')['stores'],{'R999':'Fixture SF store'})
+        self.request('/api/settings',dict(postcode='10001',interval=300,notifications=False))
+        self.assertEqual(self.request('/api/state')['stores'],{})
         self.assertEqual(server.STATE['results'],{})
 
     def test_supported_intervals_and_schedule(self):
         for interval in (30,60,120,300,600,900,1200,1800):
-            self.request('/api/settings',dict(postcode='2000',interval=interval,notifications=True))
+            self.request('/api/settings',dict(postcode='10001',interval=interval,notifications=True))
             self.assertEqual(server.STATE['interval'],interval)
             self.assertAlmostEqual(server.STATE['next_check']-time.time(),interval,delta=2)
         for interval in (0,29,301,1500,1801):
             with self.assertRaises(HTTPError) as ctx:
-                self.request('/api/settings',dict(postcode='2000',interval=interval,notifications=True))
+                self.request('/api/settings',dict(postcode='10001',interval=interval,notifications=True))
             self.assertEqual(ctx.exception.code,400)
 
     def test_pro_switch_and_no_auto_call(self):
         old=self.request('/api/collector/task')['task']
-        self.request('/api/settings',dict(model='pro-test',postcode='2000',interval=30,notifications=True))
+        self.request('/api/settings',dict(model='pro-test',postcode='10001',interval=30,notifications=True))
         task=self.request('/api/collector/task')['task']
         self.assertEqual(task['variant']['model'],'iPhone 18 Pro')
         with self.assertRaises(HTTPError):
             self.request('/api/collector/result',dict(id=old['id'],error='stale'))
-        rows=[dict(store_id=sid,store=name,status='available',message='Available Tomorrow') for sid,name in server.STORES.items()]
+        rows=[dict(store_id=sid,store=name,status='available',message='Available Tomorrow') for sid,name in FIXTURE_STORES.items()]
         self.request('/api/collector/result',dict(id=task['id'],stores=rows))
         self.assertIsNone(self.request('/api/collector/task')['task'])
         self.mock_notify.assert_called_once()
@@ -134,7 +139,7 @@ class BackendTests(unittest.TestCase):
     def test_duo_phone_aggregated_once_per_cycle(self):
         for i in range(8):
             task=self.request('/api/collector/task')['task']
-            rows=[dict(store_id=sid,store=name,status='available',message='Available Tomorrow') for sid,name in server.STORES.items()]
+            rows=[dict(store_id=sid,store=name,status='available',message='Available Tomorrow') for sid,name in FIXTURE_STORES.items()]
             self.request('/api/collector/result',dict(id=task['id'],stores=rows))
         self.request('/api/collector/task')
         self.mock_phone.assert_called_once()
@@ -148,13 +153,44 @@ class BackendTests(unittest.TestCase):
 
     def test_real_notification_path_and_no_duplicate(self):
         task=self.request('/api/collector/task')['task']
-        rows=[dict(store_id=sid,store=name,status='available' if sid=='R238' else 'unavailable',message='Available today' if sid=='R238' else 'Currently unavailable') for sid,name in server.STORES.items()]
+        rows=[dict(store_id=sid,store=name,status='available' if sid=='R250' else 'unavailable',message='Available today' if sid=='R250' else 'Currently unavailable') for sid,name in FIXTURE_STORES.items()]
         self.request('/api/collector/result',dict(id=task['id'],stores=rows))
         self.mock_notify.assert_called_once()
-        self.assertIn('Apple Sydney',self.mock_notify.call_args.args[0])
+        self.assertIn('Fixture West 14th Street',self.mock_notify.call_args.args[0])
         server.STATE.update(running=False,queue=[],next_check=0)
         repeated=self.request('/api/collector/task')['task']
         self.request('/api/collector/result',dict(id=repeated['id'],stores=rows))
         self.mock_notify.assert_called_once()
+
+    def test_failed_refresh_keeps_stores_visible_as_unknown(self):
+        task=self.request('/api/collector/task')['task']
+        rows=[dict(store_id='R077',store='Fixture Portland',status='available',message='Available today',distance_km=0.5)]
+        self.request('/api/collector/result',dict(id=task['id'],stores=rows))
+        server.STATE.update(running=False,queue=[],next_check=0)
+        task=self.request('/api/collector/task')['task']
+        self.request('/api/collector/result',dict(id=task['id'],error='HTTP 541'))
+        self.assertEqual(self.request('/api/state')['stores'],{'R077':'Fixture Portland'})
+        result=server.STATE['results'][task['variant']['id']]
+        self.assertEqual(result['error'],'HTTP 541')
+        self.assertEqual(result['stores'][0]['distance_km'],0.5)
+
+    def test_pause_rejects_inflight_result_immediately(self):
+        task=self.request('/api/collector/task')['task']
+        self.request('/api/pause',{})
+        with self.assertRaises(HTTPError) as ctx:
+            self.request('/api/collector/result',dict(id=task['id'],error='late response'))
+        self.assertEqual(ctx.exception.code,409)
+        self.assertIsNone(server.STATE['task'])
+
+    def test_large_dynamic_store_list_and_malformed_message(self):
+        task=self.request('/api/collector/task')['task']
+        rows=[dict(store_id='R'+str(i),store='Fixture Store '+str(i),status='unavailable',message='Currently unavailable'+' '*200,distance_km=i) for i in range(20)]
+        self.request('/api/collector/result',dict(id=task['id'],stores=rows))
+        self.assertEqual(len(server.display_stores()),20)
+        task=self.request('/api/collector/task')['task']
+        del rows[0]['message']
+        with self.assertRaises(HTTPError) as ctx:
+            self.request('/api/collector/result',dict(id=task['id'],stores=rows))
+        self.assertEqual(ctx.exception.code,400)
 
 if __name__=='__main__':unittest.main()

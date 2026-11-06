@@ -1,4 +1,3 @@
-const stores={};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let active=null,finished=null;
 function until(fn,timeout=40000){return new Promise((resolve,reject)=>{
@@ -9,27 +8,47 @@ function until(fn,timeout=40000){return new Promise((resolve,reject)=>{
 })}
 function dialog(){return document.querySelector('[role="dialog"]')}
 const compact=value=>String(value||'').replace(/\s/g,'').toLowerCase();
+function parseDistance(text){
+ const match=String(text||'').trim().match(/^([0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)\s*(mi|miles?|km|kilomet(?:er|re)s?)$/i);
+ if(!match)return null;
+ const value=Number(match[1].replace(/,/g,''));
+ return value*(/^mi/i.test(match[2])?1.609344:1);
+}
+function pageProductPart(variant){
+ if(location.href.split('?')[0]!==variant.url)return null;
+ for(const [name,value] of [['dimensionCapacity',variant.capacity],['dimensionColor',variant.colour],['carrierModel','UNLOCKED/US']]){
+  if(compact(document.querySelector('input[name="'+name+'"]:checked')?.value)!==compact(value))return null;
+ }
+ const expected=compact(variant.model+' '+variant.capacity+' '+variant.colour);
+ const trigger=Array.from(document.querySelectorAll('[data-autom^="productLocatorTriggerLink_"]')).find(e=>compact(e.textContent).endsWith(expected));
+ return trigger?.getAttribute('data-autom').slice('productLocatorTriggerLink_'.length)||null;
+}
 function readInventory(root,variant,postcode){
  const main=root?.querySelector('.rf-productlocator-main');
  if(!main)throw Error('未找到当前配置的主库存区域');
  const expected=(variant.model||'iPhone Duo')+' '+variant.capacity+' '+variant.colour;
  const title=main.querySelector('.rf-productlocator-productinfo .typography-body-tight')?.textContent;
- if(compact(title)!==compact(expected))throw Error('配置校验失败：当前 '+(title||'标题未加载')+'；预期 '+expected);
+ // Some US dialogs omit the title and checked dimension radios. In that
+ // case require independent product-page URL, dimensions, carrier and SKU.
+ const pagePart=!compact(title)?pageProductPart(variant):null;
+ if(compact(title)!==compact(expected)&&!(!compact(title)&&pagePart))throw Error('配置校验失败：当前 '+(title||'标题未加载')+'；预期 '+expected);
  for(const [name,value] of [['pl_dimensionCapacity',variant.capacity],['pl_dimensionColor',variant.colour]]){
   const selected=root.querySelector('input[name="'+name+'"]:checked');
-  if(!selected||compact(selected.value)!==compact(value))throw Error('配置选项不匹配：'+name+'='+ (selected?.value||'未选中'));
+  if(selected?compact(selected.value)!==compact(value):!pagePart)throw Error('配置选项不匹配：'+name+'='+ (selected?.value||'未选中'));
  }
  const heading=main.querySelector('.rf-productlocator-pickuploctionheader')?.textContent||'';
  if(!new RegExp('near:\\s*'+postcode+'\\b').test(heading))throw Error('当前配置邮编未确认：'+postcode);
  const list=main.querySelector('.rf-productlocator-pickupstoreslist');
  if(!list)throw Error('当前配置门店列表尚未加载');
  const expectedPart=main.querySelector('input[name="delivery"]')?.value;
+ if(!expectedPart||(pagePart&&pagePart!==expectedPart))throw Error('主库存商品编号与当前商品页不匹配');
  const rows=[],issues=[],seen=new Set(),parts=new Set();
  for(const el of list.querySelectorAll('[data-autom^="pickupStore_"]')){
   const option=el.querySelector('input');
   if(!option){issues.push('门店行缺少选项');continue}
   if(!/^R[0-9]+$/.test(option.value)){issues.push('门店编号无效');continue}
-  const store=stores[option.value]||(el.querySelector('.form-selector-title')?.textContent||'').replace(/\s+/g,' ').trim()||('Apple '+option.value);
+  const store=(el.querySelector('.form-selector-title')?.textContent||'').replace(/\s+/g,' ').trim();
+  if(!store){issues.push('门店名称尚未加载');continue}
   if(seen.has(option.value)){issues.push('重复门店：'+store);continue}
   seen.add(option.value);
   const part=option.getAttribute('data-pl-partnumber');
@@ -40,10 +59,11 @@ function readInventory(root,variant,postcode){
   if(/currently unavailable|unavailable for pickup|not available(?: today)?/i.test(message))status='unavailable';
   else if(!option.disabled&&/^available\b/i.test(message))status='available';
   if(status==='unknown')issues.push(store+' 文案无法识别：'+(message.slice(0,90)||'空白')+(option.disabled?'（选项禁用）':''));
-  rows.push({store_id:option.value,store,status,message,part});
+  const distanceLabel=Array.from(el.querySelectorAll('.form-selector-left-col .form-label-small')).map(e=>e.textContent.trim()).find(text=>parseDistance(text)!==null)||'';
+  rows.push({store_id:option.value,store,status,message,part,distance_km:parseDistance(distanceLabel),distance_label:distanceLabel});
  }
- const missing=Object.keys(postcode==='10001'?stores:{}).filter(id=>!seen.has(id));
- if(missing.length)issues.unshift('缺少门店：'+missing.map(id=>stores[id]).join('、'));
+ const declared=list.querySelector('button')?.textContent.match(/at\s+(\d+)\s+nearest stores/i);
+ if(declared&&rows.length!==Number(declared[1]))issues.unshift('门店列表尚未完整加载：预期 '+declared[1]+'，当前 '+rows.length);
  if(!rows.length)issues.unshift('当前邮编没有可确认的门店数据');
  if(parts.size>1)issues.unshift('当前列表混入多个商品编号');
  if(issues.length)throw Error(issues.join('；').slice(0,460));
@@ -69,22 +89,29 @@ function pickupDialog(){
  return root?.querySelector('input[data-autom="zipCode"]')&&root.getClientRects().length?root:null;
 }
 async function openPickup(){
- let prepared=false;
+ const attempted=new Set();
  try{
   const entry=await until(()=>{
    const opened=pickupDialog();
    if(opened)return {opened};
+   // US pickup is gated on payment and carrier. Always query the same
+   // full-price / connect-later configuration across the entire round.
+   for(const [name,value] of [['tradeupinline','noTradeIn'],['purchase_option_group','fullprice'],['carrierModel','UNLOCKED/US']]){
+    const option=document.querySelector('input[name="'+name+'"][value="'+value+'"]');
+    const selected=document.querySelector('input[name="'+name+'"]:checked');
+    if(option&&selected?.value!==value){
+     if(!option.disabled&&!attempted.has(name)){attempted.add(name);option.scrollIntoView?.({block:'center'});option.click()}
+     return null;
+    }
+   }
    const button=pickupTrigger();
    if(button)return {button};
-   const noTrade=document.querySelector('input[data-autom="choose-noTradeIn"]');
-   const selected=document.querySelector('input[name="tradeupinline"]:checked');
-   if(!prepared&&noTrade&&!selected&&!noTrade.disabled){prepared=true;noTrade.click()}
    return null;
   });
   if(entry.button)entry.button.click();
   await until(pickupDialog);
  }catch{
-  throw Error('当前商品页未出现自提查询入口或库存弹窗；尚未提交邮编，无法确认库存。请检查 Apple 页面是否正常提供 Check availability 或门店入口');
+  throw Error('美国站自提入口未出现；尚未提交 ZIP，无法确认库存。请检查 Buy / Connect to any carrier later 选项，或页面是否遇到访问限制（如 HTTP 541）');
  }
 }
 async function collect(task){
@@ -96,11 +123,11 @@ async function collect(task){
  try{
   await openPickup();
   stage='填写邮编';
-  const input=await until(()=>Array.from(dialog().querySelectorAll('input')).find(e=>e.type==='text'||e.getAttribute('aria-label')==='Postcode'));
+  await until(()=>dialog()?.querySelector('input[data-autom="zipCode"]'));
   stage='提交邮编并等待门店结果';
   await new Promise((resolve,reject)=>{
    const id=task.id;
-   const timer=setTimeout(()=>{document.removeEventListener('duo-postcode-response',receive);reject(Error('页面输入模块未响应，请确认扩展版本 1.1.1'))},10000);
+   const timer=setTimeout(()=>{document.removeEventListener('duo-postcode-response',receive);reject(Error('页面输入模块未响应，请重新加载美国版扩展并刷新商品页'))},10000);
    function receive(event){
     let response;try{response=JSON.parse(event.detail)}catch{return}
     if(response.id!==id)return;
