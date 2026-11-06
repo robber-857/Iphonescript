@@ -1,3 +1,10 @@
+// Apple US can use either /shop/ or /us/shop/ for the same configuration.
+// Keep the full product path so carrier, capacity and colour still must match.
+function sameProductPage(actual,expected){
+ const product=url=>String(url||'').match(/^https:\/\/(?:www\.)?apple\.com\/(?:us\/)?shop\/buy-iphone\/(iphone-duo|iphone-18-pro)\/([^/?#]+)(?:[?#].*)?$/)?.slice(1).join('/');
+ const current=product(actual);
+ return Boolean(current)&&current===product(expected);
+}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let active=null,finished=null;
 function until(fn,timeout=40000){return new Promise((resolve,reject)=>{
@@ -15,7 +22,7 @@ function parseDistance(text){
  return value*(/^mi/i.test(match[2])?1.609344:1);
 }
 function pageProductPart(variant){
- if(location.href.split('?')[0]!==variant.url)return null;
+ if(!sameProductPage(location.href,variant.url))return null;
  for(const [name,value] of [['dimensionCapacity',variant.capacity],['dimensionColor',variant.colour],['carrierModel','UNLOCKED/US']]){
   if(compact(document.querySelector('input[name="'+name+'"]:checked')?.value)!==compact(value))return null;
  }
@@ -117,7 +124,7 @@ async function openPickup(){
 }
 async function collect(task){
  if(active===task.id||finished===task.id)return;
- if(location.href.split('?')[0]!==task.variant.url)return;
+ if(!sameProductPage(location.href,task.variant.url))return;
  active=task.id;
  const postcode=task.postcode||'10001';
  let stage='等待库存查询按钮';
@@ -153,7 +160,7 @@ async function collect(task){
 }
 chrome.runtime.onMessage.addListener((msg,sender,respond)=>{
  if(msg.type==='collect'){
-  const accepted=location.href.split('?')[0]===msg.task.variant.url;
+  const accepted=sameProductPage(location.href,msg.task.variant.url);
   respond({accepted});if(accepted)collect(msg.task);
  }
 });

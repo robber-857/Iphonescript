@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Duo 美国库存采集器",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "为本机 Duo 后台采集 Apple 美国门店自提库存。",
   "permissions": [
     "alarms",
@@ -23,7 +23,13 @@
     {
       "matches": [
         "https://www.apple.com/shop/buy-iphone/iphone-duo/*",
-        "https://www.apple.com/shop/buy-iphone/iphone-18-pro/*"
+        "https://www.apple.com/shop/buy-iphone/iphone-18-pro/*",
+        "https://www.apple.com/us/shop/buy-iphone/iphone-duo/*",
+        "https://www.apple.com/us/shop/buy-iphone/iphone-18-pro/*",
+        "https://apple.com/shop/buy-iphone/iphone-duo/*",
+        "https://apple.com/shop/buy-iphone/iphone-18-pro/*",
+        "https://apple.com/us/shop/buy-iphone/iphone-duo/*",
+        "https://apple.com/us/shop/buy-iphone/iphone-18-pro/*"
       ],
       "js": [
         "page-input.js"
@@ -34,7 +40,13 @@
     {
       "matches": [
         "https://www.apple.com/shop/buy-iphone/iphone-duo/*",
-        "https://www.apple.com/shop/buy-iphone/iphone-18-pro/*"
+        "https://www.apple.com/shop/buy-iphone/iphone-18-pro/*",
+        "https://www.apple.com/us/shop/buy-iphone/iphone-duo/*",
+        "https://www.apple.com/us/shop/buy-iphone/iphone-18-pro/*",
+        "https://apple.com/shop/buy-iphone/iphone-duo/*",
+        "https://apple.com/shop/buy-iphone/iphone-18-pro/*",
+        "https://apple.com/us/shop/buy-iphone/iphone-duo/*",
+        "https://apple.com/us/shop/buy-iphone/iphone-18-pro/*"
       ],
       "js": [
         "content.js"

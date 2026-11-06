@@ -1,6 +1,10 @@
 # 美国版实现与实测记录
 
-当前版本 **1.4.2**，工作目录 **D:\duo\us**，普通独立 Git 仓库，分支 **USDEV**。AU 保留在 **D:\duo**，原 Collector 和本地修改已恢复。C 盘旧工作树已完整备份到 `D:\duo\us\.tmp\us-worktree-migration-20261106`，迁移核对了 1488 个文件的 SHA-256。
+当前版本 **1.4.3**，工作目录 **D:\duo\us**，普通独立 Git 仓库，分支 **USDEV**。AU 保留在 **D:\duo**，原 Collector 和本地修改已恢复。C 盘旧工作树已完整备份到 `D:\duo\us\.tmp\us-worktree-migration-20261106`，迁移核对了 1488 个文件的 SHA-256。
+
+## 1.4.3 选页修复
+
+同时支持美国 `/shop/` 与 `/us/shop/` 商品页，补全后台选页和两种页面脚本的注入规则；商品配置与运营商仍严格校验。升级后在 `chrome://extensions` 重新加载 `D:\duo\us\collector`，刷新 Apple 页面并重新点击美国扩展选页。
 
 ## 50 km 实际监测范围（1.4.2）
 

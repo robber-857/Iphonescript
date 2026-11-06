@@ -15,7 +15,7 @@ async function clearAppleCookies(tabId){
  const remaining=await chrome.cookies.getAll({domain:'apple.com',storeId:store.id});
  if(remaining.length)throw Error('Apple Cookie 未完全清除');
 }
-function supported(url){return /^https:\/\/www\.apple\.com\/shop\/buy-iphone\/(iphone-duo|iphone-18-pro)\//.test(url||'')}
+function supported(url){return /^https:\/\/(?:www\.)?apple\.com\/(?:us\/)?shop\/buy-iphone\/(iphone-duo|iphone-18-pro)\/[^/?#]+(?:[?#].*)?$/.test(url||'')}
 async function badge(text,title){
  await chrome.action.setBadgeText({text});
  await chrome.action.setTitle({title});

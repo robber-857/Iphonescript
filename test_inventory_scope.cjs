@@ -63,3 +63,20 @@ test('distance parses miles and km without confusing addresses or unknown values
 test('missing store distance cannot become monitorable inventory',()=>{
  const f=fixture();f.rows[0].querySelectorAll=()=>[{textContent:'Portland, OR'}];assert.throws(f.read,/距离未确认/);
 });
+
+test('US URL aliases preserve page identity and carrier protection',()=>{
+ const f=fixture();f.title='';f.capacity=null;f.colour=null;
+ f.url=variant.url.replace('/shop/','/us/shop/')+'?test=1#pickup';assert.equal(f.read().length,1);
+ f.url=f.url.replace('www.','');assert.equal(f.read().length,1);
+ f.url=f.url.replace('-unlocked','-att');assert.throws(f.read,/配置校验失败/);
+ f.url=variant.url.replace('/shop/','/au/shop/');assert.throws(f.read,/配置校验失败/);
+});
+test('both injection worlds cover US aliases for Duo and Pro',()=>{
+ const manifest=JSON.parse(fs.readFileSync('collector/manifest.json','utf8'));
+ for(const script of manifest.content_scripts){
+  for(const host of ['www.apple.com','apple.com'])for(const prefix of ['', 'us/'])for(const model of ['iphone-duo','iphone-18-pro']){
+   assert.ok(script.matches.includes(`https://${host}/${prefix}shop/buy-iphone/${model}/*`));
+  }
+  assert.ok(script.matches.every(url=>!url.includes('/au/')));
+ }
+});
