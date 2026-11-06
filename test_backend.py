@@ -15,7 +15,7 @@ FIXTURE_STORES = {'R250': 'Fixture West 14th Street', 'R095': 'Fixture Fifth Ave
 class BackendTests(unittest.TestCase):
     def setUp(self):
         self.original=copy.deepcopy(server.STATE)
-        server.STATE.update(enabled=True,model='duo',postcode='10001',running=False,next_check=0,task=None,queue=[],results={},events=[],clear_apple_cookies=False,cookie_cleanup=None)
+        server.STATE.update(enabled=True,notifications=True,interval=300,model='duo',postcode='10001',running=False,next_check=0,task=None,queue=[],results={},events=[],clear_apple_cookies=False,cookie_cleanup=None)
         server.PENDING_PHONE.clear()
         self.mock_phone=patch.object(server.PHONE,'call').start()
         self.mock_save=patch.object(server,'save').start()

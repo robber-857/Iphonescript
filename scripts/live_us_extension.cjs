@@ -49,12 +49,13 @@ async function api(route,data){
  const results=Object.entries(final.results).map(([id,r])=>({id,error:r.error,checked:r.checked,stores:r.stores}));
  const evidence={tested_at:new Date().toISOString(),zip,model,extension:bound.version,last_cycle:final.last_cycle,next_check:final.next_check,cookie_cleanup:final.events.find(e=>e.message.includes('Cookie 清理完成')),results};
  fs.writeFileSync(path.join(output,model+'-'+zip+'-extension.json'),JSON.stringify(evidence,null,2));
- const failures=results.filter(r=>r.error||!r.stores.length||r.checked<begun);
+ const failures=results.filter(r=>r.error||r.checked<begun);
  if(results.length!==configured.variants.length||failures.length){
   await page.screenshot({path:path.join(output,'extension-failure.png'),fullPage:true});
   console.log(JSON.stringify(await page.evaluate(()=>({url:location.href,title:document.title,body:document.body.innerText.slice(0,350),inputs:Array.from(document.querySelectorAll('input[type=radio]')).map(e=>({name:e.name,value:e.value,checked:e.checked,disabled:e.disabled})),pickup:Array.from(document.querySelectorAll('[data-autom^=productLocatorTriggerLink_]')).map(e=>({text:e.textContent,visible:e.getClientRects().length}))}))));
   throw Error('Incomplete/failed real results: '+JSON.stringify(failures));
  }
+ if(results.some(r=>r.stores.some(s=>typeof s.distance_km!=='number'||s.distance_km<0||s.distance_km>50)))throw Error('Out-of-radius inventory persisted');
  if(!evidence.cookie_cleanup||evidence.cookie_cleanup.time<begun)throw Error('No successful cookie cleanup acknowledgement');
  if(Math.abs(final.next_check-evidence.cookie_cleanup.time-300)>2)throw Error('Incorrect post-cleanup interval');
  await api('pause',{});

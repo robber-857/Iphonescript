@@ -1,70 +1,64 @@
 # 美国版实现与实测记录
 
-基线：USDEV `ad11dcb`。本次实现基于该分支，采集器版本 **1.4.1**。使用说明见 [README.md](README.md)。
+当前版本 **1.4.2**，工作目录 **D:\duo\us**，普通独立 Git 仓库，分支 **USDEV**。AU 保留在 **D:\duo**，原 Collector 和本地修改已恢复。C 盘旧工作树已完整备份到 `D:\duo\us\.tmp\us-worktree-migration-20261106`，迁移核对了 1488 个文件的 SHA-256。
 
-## 本次修复
+## 50 km 实际监测范围（1.4.2）
 
-- 统一使用美国 `-unlocked` 商品 URL，自动完成不折抵 / Buy / Connect to any carrier later。
-- US 部分自提弹窗为空标题、容量颜色 radio 未选中。此时必须同时通过商品页 URL、容量、颜色、运营商、查询入口产品名称和 SKU 校验，并验证弹窗主商品和每家门店 SKU 一致。显式冲突仍拒收；不读取 Similar models 推荐库存。
-- 校验“nearest stores”声明数量，避免接受尚未完整渲染的缺货名单。
-- 采集 Apple 门店距离；英里乘 1.609344，50 km 筛选默认开启，未知距离不纳入。筛选只影响显示，不改变通知范围。
-- 查询失败保留已知门店并显示待确认；暂停、切换 ZIP 和重启作废旧任务/清理租约；支持大于 4 KB 的动态门店回传。
-- 更新美国测试数据、README、打包；忽略 data-us/，防止电话配置或本地记录被误提交。
+- 固定范围 `0 <= distance_km <= 50`。后端过滤发生在持久化、补货变化判断、事件记录、Windows 通知、电话聚合之前。
+- 未知、负数、非数值、NaN、Infinity 距离均拒收；旧采集协议拒收。失败仍保留上次近店结果，但显示待确认。
+- Apple 可返回较远门店；采集器校验完整列表，服务器只保留范围内门店。远店不在表格中，也不产生补货提醒。
+- 全部返回门店都超过 50 km 时，记录一次成功的空近店结果，不发送提醒。
+- 升级时移除旧结果中的远店/未知距离，并清理旧范围的 stock 动态；不重放旧提醒。
+- UI 将原来的距离筛选替换为“监测与提醒：50 km 内”，无法切回远店范围。
 
-## 2026-11-06 实测（Australia/Sydney）
+34 项 Python、29 项 JavaScript 回归通过，覆盖精确 50 km 边界、50.00001 km 排除、远店整轮有货零通知/零电话、近店提醒去重、未知距离拒收和旧数据迁移。电话调用在测试中模拟，没有真实拨号。
 
-目标 ZIP：**97204**。这些是测试当时结果，不是持续库存保证。
+## 1.4.2 迁移后实测
 
-| 验证层级 | 结果 |
-| --- | --- |
-| Python 回归 | 29 项通过：任务/邮编/调度、去重、错误保留、暂停作废、电话聚合与冷却等 |
-| JavaScript 回归 | 28 项通过：页面输入、主商品范围/SKU、美国选项、绑定、Cookie、距离换算与边界 |
-| Apple 真实页面 → 原采集器脚本 → 本地 API | Duo 8 配置 × 8 门店采集成功；当时 64 格均为 unavailable。Pro 256GB Black 8 门店均返回 Available Today |
-| 50 km UI | 真实距离下显示 3 / 8 家；关闭筛选显示 8 家，与仅看有货组合正常；375px 页面无整体横向溢出 |
-| 实际扩展加载与任务回传 | 隔离 Chromium 已加载 1.4.1、绑定指定页、执行任务并回传错误；Apple `/shop/fulfillment-messages` 返回 HTTP 541，自提入口未生成，因此完整扩展库存成功链路尚未通过 |
-| 扩展 Cookie 与间隔 | 隔离测试配置中实际清理 Apple Cookie、后台收到成功回执，回执后 300 秒排期通过；不代表 Cookie 能消除 HTTP 541 |
-| 电话/桌面弹窗 | 电话模块使用模拟调用测试，未真实拨号；本轮未验证实际 Windows 声音/弹窗展示 |
+后台进程实际从 `D:\duo\us\server.py` 启动，ZIP 97204。真实 Pro 页面返回 8 家门店，服务器仅记录 3 家近店、排除 5 家远店，补货动态也恰好只有 3 条近店事件。UI 显示“监测与提醒：50 km 内”，原距离开关已移除。实测关闭了 Windows 通知和电话，提醒抑制/聚合由上述回归测试验证。
 
-页面集成测试通过 Playwright CLI 向真实 Apple 页面加载仓库 `page-input.js` 和 `content.js`，仅将扩展消息通道桥接到本地 API，**没有伪造或注入库存数据**。这不等于已验证实际 Chrome 扩展的长期自动运行。
+证据：`output/playwright/pro-97204-radius142.json` 和 `pro-97204-radius142.png`。Duo 全配置验证结果保存于 `output/playwright/duo-97204-radius142.json`。
 
-隔离浏览器的 HTTP 541 不按缺货处理。日常使用需在正常 Chrome 中手动加载扩展、打开具体商品页并绑定后继续验收；本次没有安装或替换用户日常 Chrome 中的扩展，也未改动 AU 服务。
+## 1.4.1 的真实页面验证记录（2026-11-06，Sydney 时间）
 
-50 km 内实际门店：
+目标 ZIP 为 **97204**。Duo 8 个配置 × 8 家返回门店真实采集成功，测试当时均无货；Pro 256GB Black 8 家门店均返回 Available Today。这一阶段的 50 km 只是表格筛选，已由 1.4.2 的实际后端范围替代。
 
-| 门店 | Apple 原始距离 | 换算显示 |
-| --- | --- | --- |
-| Apple Pioneer Place | 0.31 mi | 0.5 km |
-| Apple Washington Square | 7.14 mi | 11.5 km |
-| Apple Bridgeport Village | 9.37 mi | 15.1 km |
+近店实测距离：Pioneer Place 0.31 mi（0.5 km）、Washington Square 7.14 mi（11.5 km）、Bridgeport Village 9.37 mi（15.1 km）。其余 Tacoma、Tukwila、Bellevue、Seattle、Lynnwood 门店约 189–259 km，现已排除。
 
-其余返回门店位于 Tacoma、Tukwila、Bellevue、Seattle、Lynnwood，约 189–259 km，开启筛选时隐藏。
+页面集成测试通过 Playwright CLI 向真实 Apple 页面加载原采集器脚本，将扩展消息桥接到本地 API，没有伪造库存。隔离 Chromium 的实际扩展已完成绑定、任务回传、Cookie 清理和清理后 300 秒排期，但 Apple `/shop/fulfillment-messages` 返回 HTTP 541，没有生成库存入口，因此不能宣称实际扩展长期自动采集已全面通过。正常 Chrome 中仍需继续验收。
 
-本地证据（均在 Git 忽略目录）：`output/playwright/duo-97204-live.json`、`pro-97204-live.json`、`pro-97204-50km.png`、`pro-97204-mobile.png`，及隔离扩展失败记录 `pro-test-97204-extension.json`。失败记录里的旧 stores 保留上次成功数据，必须同时检查 error 与 checked 时间，不能当作此次成功。
+历史证据保留于 `output/playwright/`。扩展失败记录可能含上次成功 stores，必须同时看 error 与 checked，不能把旧数据当成该次成功。未验证实际 Windows 声音/弹窗展示，未真实拨号。
 
-## 重复开发测试
+## 安装路径
 
-普通用户无须安装以下开发工具。
+- AU Collector：`D:\duo\collector`；后台 8765；原有 AU 本地文件不变。
+- US Collector：`D:\duo\us\collector`；后台 8766；本地数据 `D:\duo\us\data-us`。
+- US 启动：`D:\duo\us\start.cmd`。
+- US 分享包：`D:\duo\us\dist\Iphonescript-US.zip`，不包含本地配置或凭据。
+- Chrome 中移除旧 C 盘的美国扩展后加载 US 新目录；不要移除 AU 扩展。
+
+## 重复开发验证
+
+在 `D:\duo\us` 执行：
 
 ```powershell
 python -m unittest test_monitor test_backend test_us test_phone -v
 node --test test_page_input.cjs test_inventory_scope.cjs test_pickup_trigger.cjs test_collector_binding.cjs test_cookie_cleanup.cjs
 ```
 
-实际扩展测试使用 Playwright 官方的持久化 Chromium 上下文方案（[官方说明](https://playwright.dev/docs/chrome-extensions)），独立临时浏览器配置，自动电话必须关闭。它会短暂开启 Cookie 清理，仅作用于隔离测试配置，结束后暂停监测并恢复间隔/通知/Cookie 偏好，保留测试 ZIP、机型及结果。
+实际扩展测试使用隔离持久化 Chromium。它暂停现有 US 监测、选择测试 ZIP/机型、关闭声音通知，在隔离配置中测试 Cookie 清理；最后暂停并恢复间隔/通知/Cookie 偏好。自动电话必须事先关闭。
 
 ```powershell
 npm install --prefix .tmp/browser-tools --no-save playwright
 $env:PLAYWRIGHT_MODULE = Join-Path $PWD '.tmp/browser-tools/node_modules/playwright'
 & .tmp/browser-tools/node_modules/.bin/playwright.cmd install chromium
 node scripts/live_us_extension.cjs 97204 pro-test
-# Apple 正常允许访问时，再测整轮：
-node scripts/live_us_extension.cjs 97204 duo
 ```
 
-`live_us_page_step.js` 是 Playwright CLI 的单配置真实页面集成函数。先启动后台并保存 ZIP / 机型、关闭自动电话、开启监测，然后在 CLI 管理的 Apple 页面中运行：
+页面集成函数 `scripts/live_us_page_step.js` 每次读取后台一个任务。先启动后台、选择 ZIP 和机型并关闭自动电话，再开始监测，在已打开 Apple 页的 Playwright CLI 会话中执行：
 
 ```powershell
 npx --yes --package @playwright/cli playwright-cli -s=us-stock run-code --filename=scripts/live_us_page_step.js
 ```
 
-一次领取并提交一个配置；Duo 完成 8 次后，再运行一次推进整轮完成，最后在管理页暂停。此辅助测试不能替代实际扩展验收。
+Duo 执行 8 次后，再执行一次推进整轮完成，最后暂停。此辅助测试不能代替完整扩展验收。
