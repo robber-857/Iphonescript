@@ -60,6 +60,7 @@ function readInventory(root,variant,postcode){
   else if(!option.disabled&&/^available\b/i.test(message))status='available';
   if(status==='unknown')issues.push(store+' 文案无法识别：'+(message.slice(0,90)||'空白')+(option.disabled?'（选项禁用）':''));
   const distanceLabel=Array.from(el.querySelectorAll('.form-selector-left-col .form-label-small')).map(e=>e.textContent.trim()).find(text=>parseDistance(text)!==null)||'';
+  if(parseDistance(distanceLabel)===null)issues.push(store+' 距离未确认，无法判断是否在 50 km 内');
   rows.push({store_id:option.value,store,status,message,part,distance_km:parseDistance(distanceLabel),distance_label:distanceLabel});
  }
  const declared=list.querySelector('button')?.textContent.match(/at\s+(\d+)\s+nearest stores/i);
@@ -144,7 +145,7 @@ async function collect(task){
   if(expand&&expand.getAttribute('aria-expanded')!=='true')expand.click();
   stage='校验配置和库存';
   const rows=await waitInventory(task.variant,postcode);
-  const response=await chrome.runtime.sendMessage({type:'result',result:{id:task.id,postcode,scope_version:2,stores:rows}});
+  const response=await chrome.runtime.sendMessage({type:'result',result:{id:task.id,postcode,scope_version:3,stores:rows}});
   if(response?.error)throw Error(response.error);
   finished=task.id;
  }catch(e){try{await chrome.runtime.sendMessage({type:'result',result:{id:task.id,postcode,error:stage+'：'+e.message}})}catch{/* Extension may have been reloaded while this page was running. */}}

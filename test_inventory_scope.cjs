@@ -59,3 +59,7 @@ test('distance parses miles and km without confusing addresses or unknown values
  for(const value of ['Portland, OR','','unknown','-1 mi','97204'])assert.equal(ctx.parseDistance(value),null);
  assert.equal(fixture().read()[0].distance_km,0.31*1.609344);
 });
+
+test('missing store distance cannot become monitorable inventory',()=>{
+ const f=fixture();f.rows[0].querySelectorAll=()=>[{textContent:'Portland, OR'}];assert.throws(f.read,/距离未确认/);
+});

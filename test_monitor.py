@@ -23,5 +23,18 @@ class StockTests(unittest.TestCase):
         self.assertEqual(STORES,{})
         self.assertNotIn('R483',STORES)
 
+    def test_scope_migration_removes_far_and_unknown_without_replaying_alerts(self):
+        from monitor import migrate_monitoring_scope
+        state={'results':{'duo':{'stores':[{'store_id':'R1','distance_km':1},{'store_id':'R2','distance_km':51},{'store_id':'R3'}]}},
+               'events':[{'kind':'stock','message':'old far alert'},{'kind':'info','message':'keep'}]}
+        migrate_monitoring_scope(state)
+        self.assertEqual(state['results']['duo']['stores'],[{'store_id':'R1','distance_km':1}])
+        self.assertIn('距离未确认',state['results']['duo']['error'])
+        self.assertEqual(state['events'],[{'kind':'info','message':'keep'}])
+        self.assertEqual(state['max_distance_km'],50)
+        state['events'].append({'kind':'stock','message':'new nearby alert'})
+        migrate_monitoring_scope(state)
+        self.assertEqual(len(state['events']),2)
+
 if __name__=='__main__':
     unittest.main()

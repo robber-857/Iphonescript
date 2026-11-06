@@ -8,7 +8,7 @@ import secrets
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from monitor import VARIANTS, STORES, stock_changes, MODELS, variants_for
+from monitor import VARIANTS, STORES, stock_changes, MODELS, variants_for, MAX_DISTANCE_KM, SCOPE_VERSION, valid_distance, within_monitoring_scope, migrate_monitoring_scope
 from phone import Phone
 
 DATA = ROOT / 'data-us'
@@ -24,6 +24,7 @@ if STATE_FILE.exists():
         STATE.update(json.loads(STATE_FILE.read_text(encoding='utf-8')))
     except (ValueError, OSError):
         pass
+migrate_monitoring_scope(STATE)
 STATE.update(running=False, current=None, next_check=time.time() if STATE['enabled'] else None)
 STATE.update(collector_seen=None,task=None,queue=[])
 STATE.setdefault('postcode','10001')
@@ -70,7 +71,7 @@ def notify(message):
 def display_stores():
     return {row['store_id']: row['store']
             for result in STATE['results'].values()
-            for row in result.get('stores', [])}
+            for row in result.get('stores', []) if within_monitoring_scope(row)}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -112,7 +113,7 @@ class Handler(BaseHTTPRequestHandler):
                         STATE.update(queue=list(variants_for(STATE['model'])),running=True,next_check=None)
                     if STATE['queue']:
                         variant=STATE['queue'].pop(0)
-                        STATE.update(task=dict(id=secrets.token_hex(12),variant=variant,postcode=STATE['postcode'],started=now),current=variant.get('model','iPhone Duo')+' '+variant['capacity']+' '+variant['colour'])
+                        STATE.update(task=dict(id=secrets.token_hex(12),variant=variant,postcode=STATE['postcode'],max_distance_km=MAX_DISTANCE_KM,scope_version=SCOPE_VERSION,started=now),current=variant.get('model','iPhone Duo')+' '+variant['capacity']+' '+variant['colour'])
                     elif STATE['running']:
                         finish_phone_cycle()
                         STATE.update(running=False,current=None,last_cycle=now,next_check=now+STATE['interval'])
@@ -204,16 +205,23 @@ class Handler(BaseHTTPRequestHandler):
                         event('error',variant['id']+'：'+str(payload['error'])[:220])
                     else:
                         rows=payload['stores']
-                        if payload.get('scope_version') != 2:
-                            raise ValueError('请重新加载采集扩展 1.4.1，并刷新 Apple 商品页以支持邮编门店切换')
+                        if payload.get('scope_version') != SCOPE_VERSION:
+                            raise ValueError('请重新加载采集扩展 1.4.2，并刷新 Apple 商品页以支持邮编门店切换')
                         if not isinstance(rows,list) or not rows or len(rows)>100 or any(not isinstance(r,dict) or not re.fullmatch(r'R[0-9]+',str(r.get('store_id',''))) or not isinstance(r.get('store'),str) or not r['store'].strip() for r in rows):
                             raise ValueError('门店列表无效')
                         if len({r['store_id'] for r in rows}) != len(rows):
                             raise ValueError('门店列表重复')
                         if any(r.get('status') not in ('available','unavailable') or not isinstance(r.get('message'),str) for r in rows):
                             raise ValueError('无法识别库存状态')
-                        changes=stock_changes(result.get('stores',[]),rows)
-                        STATE['results'][variant['id']]=dict(stores=rows,checked=time.time(),attempted=time.time(),error=None)
+                        if any(not valid_distance(row.get('distance_km')) for row in rows):
+                            raise ValueError('门店距离缺失或无效，无法确认 50 km 监测范围；请更新扩展 1.4.2')
+                        # Drop distant stores BEFORE persistence, restock comparison,
+                        # event creation, Windows notifications and phone aggregation.
+                        source_store_count=len(rows)
+                        rows=[row for row in rows if within_monitoring_scope(row)]
+                        previous=[row for row in result.get('stores',[]) if within_monitoring_scope(row)]
+                        changes=stock_changes(previous,rows)
+                        STATE['results'][variant['id']]=dict(stores=rows,checked=time.time(),attempted=time.time(),error=None,source_store_count=source_store_count,excluded_store_count=source_store_count-len(rows))
                         for row in changes:
                             msg=f"{variant.get('model','iPhone Duo')} · {row['store']} · {variant['capacity']} {variant['colour']} · {row['message']}"
                             event('stock',msg)

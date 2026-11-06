@@ -32,7 +32,7 @@ class BackendTests(unittest.TestCase):
         headers={'Host':'127.0.0.1:8766'}
         if token:headers['X-Duo-Token']=server.TOKEN
         if path=='/api/collector/result' and payload is not None:
-            payload=dict(postcode=server.STATE['postcode'],scope_version=2,**payload) if 'postcode' not in payload and 'scope_version' not in payload else payload
+            payload=dict(postcode=server.STATE['postcode'],scope_version=3,**payload) if 'postcode' not in payload and 'scope_version' not in payload else payload
         body=None if payload is None else json.dumps(payload).encode()
         req=Request(f'http://127.0.0.1:{self.http.server_port}'+path,data=body,headers=headers)
         with urlopen(req) as r:return json.load(r)
@@ -40,7 +40,7 @@ class BackendTests(unittest.TestCase):
     def test_full_cycle_and_dedup(self):
         for i in range(8):
             task=self.request('/api/collector/task')['task']
-            rows=[dict(store_id=sid,store=name,status='unavailable',message='Currently unavailable') for sid,name in FIXTURE_STORES.items()]
+            rows=[dict(store_id=sid,store=name,distance_km=5,status='unavailable',message='Currently unavailable') for sid,name in FIXTURE_STORES.items()]
             self.request('/api/collector/result',dict(id=task['id'],stores=rows))
         self.assertIsNone(self.request('/api/collector/task')['task'])
         self.assertEqual(len(server.STATE['results']),8)
@@ -101,12 +101,12 @@ class BackendTests(unittest.TestCase):
         self.request('/api/settings',dict(postcode='94105',interval=300,notifications=False))
         self.assertEqual(self.request('/api/state')['stores'],{})
         task=self.request('/api/collector/task')['task']
-        rows=[dict(store_id='R999',store='Fixture SF store',status='unavailable',message='Currently unavailable')]
+        rows=[dict(store_id='R999',store='Fixture SF store',distance_km=5,status='unavailable',message='Currently unavailable')]
         with self.assertRaises(HTTPError):
-            self.request('/api/collector/result',dict(id=old['id'],postcode='94105',scope_version=2,stores=rows))
+            self.request('/api/collector/result',dict(id=old['id'],postcode='94105',scope_version=3,stores=rows))
         with self.assertRaises(HTTPError):
             self.request('/api/collector/result',dict(id=task['id'],postcode='94105',stores=rows))
-        self.request('/api/collector/result',dict(id=task['id'],postcode='94105',scope_version=2,stores=rows))
+        self.request('/api/collector/result',dict(id=task['id'],postcode='94105',scope_version=3,stores=rows))
         self.assertEqual(self.request('/api/state')['stores'],{'R999':'Fixture SF store'})
         self.request('/api/settings',dict(postcode='10001',interval=300,notifications=False))
         self.assertEqual(self.request('/api/state')['stores'],{})
@@ -129,7 +129,7 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(task['variant']['model'],'iPhone 18 Pro')
         with self.assertRaises(HTTPError):
             self.request('/api/collector/result',dict(id=old['id'],error='stale'))
-        rows=[dict(store_id=sid,store=name,status='available',message='Available Tomorrow') for sid,name in FIXTURE_STORES.items()]
+        rows=[dict(store_id=sid,store=name,distance_km=5,status='available',message='Available Tomorrow') for sid,name in FIXTURE_STORES.items()]
         self.request('/api/collector/result',dict(id=task['id'],stores=rows))
         self.assertIsNone(self.request('/api/collector/task')['task'])
         self.mock_notify.assert_called_once()
@@ -139,7 +139,7 @@ class BackendTests(unittest.TestCase):
     def test_duo_phone_aggregated_once_per_cycle(self):
         for i in range(8):
             task=self.request('/api/collector/task')['task']
-            rows=[dict(store_id=sid,store=name,status='available',message='Available Tomorrow') for sid,name in FIXTURE_STORES.items()]
+            rows=[dict(store_id=sid,store=name,distance_km=5,status='available',message='Available Tomorrow') for sid,name in FIXTURE_STORES.items()]
             self.request('/api/collector/result',dict(id=task['id'],stores=rows))
         self.request('/api/collector/task')
         self.mock_phone.assert_called_once()
@@ -153,7 +153,7 @@ class BackendTests(unittest.TestCase):
 
     def test_real_notification_path_and_no_duplicate(self):
         task=self.request('/api/collector/task')['task']
-        rows=[dict(store_id=sid,store=name,status='available' if sid=='R250' else 'unavailable',message='Available today' if sid=='R250' else 'Currently unavailable') for sid,name in FIXTURE_STORES.items()]
+        rows=[dict(store_id=sid,store=name,distance_km=5,status='available' if sid=='R250' else 'unavailable',message='Available today' if sid=='R250' else 'Currently unavailable') for sid,name in FIXTURE_STORES.items()]
         self.request('/api/collector/result',dict(id=task['id'],stores=rows))
         self.mock_notify.assert_called_once()
         self.assertIn('Fixture West 14th Street',self.mock_notify.call_args.args[0])
@@ -192,5 +192,61 @@ class BackendTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as ctx:
             self.request('/api/collector/result',dict(id=task['id'],stores=rows))
         self.assertEqual(ctx.exception.code,400)
+
+    def test_radius_boundary_filters_before_persistence_and_alerts(self):
+        task=self.request('/api/collector/task')['task']
+        self.assertEqual(task['max_distance_km'],50)
+        self.assertEqual(task['scope_version'],3)
+        rows=[dict(store_id='R'+str(i),store=name,distance_km=distance,status='available',message='Available Today')
+              for i,(name,distance) in enumerate([('Near',0),('Boundary',50),('Outside',50.00001),('Far',200)])]
+        self.request('/api/collector/result',dict(id=task['id'],stores=rows))
+        result=server.STATE['results'][task['variant']['id']]
+        self.assertEqual([row['store'] for row in result['stores']],['Near','Boundary'])
+        self.assertEqual(result['excluded_store_count'],2)
+        self.mock_notify.assert_called_once()
+        self.assertNotIn('Outside',self.mock_notify.call_args.args[0])
+        self.assertNotIn('Far',str(server.PENDING_PHONE))
+        self.assertEqual(len([e for e in server.STATE['events'] if e['kind']=='stock']),2)
+
+    def test_distant_only_cycle_never_notifies_or_calls(self):
+        for _ in range(8):
+            task=self.request('/api/collector/task')['task']
+            rows=[dict(store_id='R999',store='Far available',distance_km=51,status='available',message='Available Today')]
+            self.request('/api/collector/result',dict(id=task['id'],stores=rows))
+        self.request('/api/collector/task')
+        self.mock_notify.assert_not_called()
+        self.mock_phone.assert_not_called()
+        self.assertEqual(server.display_stores(),{})
+        self.assertTrue(all(r['stores']==[] and r['checked'] and not r['error'] for r in server.STATE['results'].values()))
+        self.assertFalse(any(e['kind']=='stock' for e in server.STATE['events']))
+
+    def test_unknown_invalid_distance_and_old_protocol_fail_closed(self):
+        task=self.request('/api/collector/task')['task']
+        row=dict(store_id='R077',store='Unknown',status='available',message='Available Today')
+        for invalid in (None,-1,True,'1',float('nan'),float('inf')):
+            with self.assertRaises(HTTPError) as ctx:
+                self.request('/api/collector/result',dict(id=task['id'],stores=[dict(row,distance_km=invalid)]))
+            self.assertEqual(ctx.exception.code,400)
+        with self.assertRaises(HTTPError):
+            self.request('/api/collector/result',dict(id=task['id'],stores=[row]))
+        with self.assertRaises(HTTPError):
+            self.request('/api/collector/result',dict(id=task['id'],postcode='10001',scope_version=2,stores=[dict(row,distance_km=1)]))
+        self.mock_notify.assert_not_called()
+        self.assertEqual(server.PENDING_PHONE,[])
+        self.assertEqual(server.display_stores(),{})
+
+    def test_nearby_alert_excludes_far_store_and_is_deduplicated(self):
+        rows=[dict(store_id='R077',store='Near available',distance_km=15,status='available',message='Available Today'),
+              dict(store_id='R999',store='Far available',distance_km=190,status='available',message='Available Today')]
+        for cycle in range(2):
+            server.STATE.update(next_check=0)
+            for _ in range(8):
+                task=self.request('/api/collector/task')['task']
+                self.request('/api/collector/result',dict(id=task['id'],stores=rows))
+            self.request('/api/collector/task')
+        self.assertEqual(self.mock_notify.call_count,8)
+        self.mock_phone.assert_called_once()
+        self.assertIn('Near available',self.mock_phone.call_args.args[0])
+        self.assertNotIn('Far available',self.mock_phone.call_args.args[0])
 
 if __name__=='__main__':unittest.main()

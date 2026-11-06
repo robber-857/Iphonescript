@@ -38,8 +38,8 @@ class USTests(unittest.TestCase):
      with self.assertRaises(HTTPError):
       call('/api/settings',dict(interval=300,notifications=False,postcode=zip))
     server.STATE['task']=dict(id='us',postcode='90210',variant=VARIANTS[0])
-    rows=[dict(store_id='R999',store='Test US Store',status='available',message='Available today')]
-    call('/api/collector/result',dict(id='us',postcode='90210',scope_version=2,stores=rows))
+    rows=[dict(store_id='R999',store='Test US Store',distance_km=5,status='available',message='Available today')]
+    call('/api/collector/result',dict(id='us',postcode='90210',scope_version=3,stores=rows))
     self.assertEqual(server.display_stores(),{'R999':'Test US Store'})
   finally:
    server.PENDING_PHONE.clear()

@@ -15,12 +15,12 @@ function render(){
  const postcode=state.postcode||'10001';
  const city='美国 ZIP '+postcode+' 附近';
  const allStores=Object.entries(state.stores);
- const visibleStores=allStores.filter(([sid])=>!$('nearby').checked||(storeDistance(sid)!==null&&storeDistance(sid)<=50));
+ const visibleStores=allStores.filter(([sid])=>storeDistance(sid)!==null&&storeDistance(sid)<=state.max_distance_km);
  const count=allStores.length;
  $('location-title').textContent=city+'门店库存';
  document.title='Duo / '+city+'库存监测';
- $('store-scope').textContent=count?'显示 '+visibleStores.length+' / '+count+' 家：'+visibleStores.map(([,name])=>name).join(' / '):'等待 Apple 返回 '+postcode+' 附近门店';
- $('model-summary').textContent=state.model==='pro-test'?'iPhone 18 Pro · 256GB Black · 真实库存测试（不自动拨号）':'iPhone Duo · 全部颜色和容量 · '+(count?count+' 家门店':'等待门店数据');
+ $('store-scope').textContent=count?'监测与提醒范围：50 km 内 '+visibleStores.length+' 家：'+visibleStores.map(([,name])=>name).join(' / '):'等待 Apple 返回 '+postcode+' 附近门店';
+ $('model-summary').textContent=state.model==='pro-test'?'iPhone 18 Pro · 256GB Black · 真实库存测试（不自动拨号）':'iPhone Duo · 全部颜色和容量 · 50 km 内 · '+(count?count+' 家门店':'等待门店数据');
  if(renderedModel!==state.model){
   $('colour').replaceChildren(new Option('全部颜色',''),...Array.from(new Set(state.variants.map(v=>v.colour))).map(v=>new Option(v,v)));
   $('capacity').value='';renderedModel=state.model;
@@ -52,8 +52,9 @@ function render(){
   for(const {v,r,row,status} of cells){const td=element('td','');const a=element('a',status==='available'?'● 可自提':status==='unavailable'?'暂无库存':'待确认','cell '+status);a.href=v.url;a.target='_blank';a.rel='noopener';a.title=(r?.error?'本次查询失败：'+r.error+'\n':'')+'上次成功：'+stamp(r?.checked)+'\n'+(row?.message||'尚无有效数据')+'\n点击打开 Apple 官网';td.append(a);tr.append(td)}
   body.append(tr);
  }
- if(!body.children.length){const td=element('td',count?(visibleStores.length?'当前筛选下没有已确认有货的门店':'尚无距离已确认且在 50 km 内的门店；可取消距离筛选或等待新版扩展采集'):'等待首次采集 '+postcode+' 附近门店；请确认扩展已更新至 1.4.1');td.colSpan=variants.length+1;const tr=element('tr','');tr.append(td);body.append(tr)}
- $('summary').textContent=`${visibleStores.length} / ${count} 家门店 · ${available} 个有货组合 · ${unknown} 个待确认`;
+ const successful=Object.values(state.results).some(result=>result.checked&&!result.error);
+ if(!body.children.length){const td=element('td',count?'当前筛选下没有已确认有货的门店':successful?'本次 Apple 返回的门店中，没有距离已确认且在 50 km 内的门店':'等待采集 '+postcode+' 的 50 km 内门店；请确认扩展已更新至 1.4.2');td.colSpan=variants.length+1;const tr=element('tr','');tr.append(td);body.append(tr)}
+ $('summary').textContent=`50 km 内 ${visibleStores.length} 家门店 · ${available} 个有货组合 · ${unknown} 个待确认`;
  if(!dirty){$('model').value=state.model||'duo';$('postcode').value=state.postcode||'10001';$('interval').value=state.interval;$('notifications').checked=state.notifications;$('clear-cookies').checked=!!state.clear_apple_cookies}
  $('events').replaceChildren();$('count').textContent=state.events.length?`/ ${state.events.length}`:'';
  for(const ev of state.events.slice(0,30)){const e=element('div','','event '+ev.kind);e.append(element('time',stamp(ev.time)),element('span',ev.message));$('events').append(e)}
@@ -64,7 +65,7 @@ async function action(path,body={}){try{const r=await fetch('/api/'+path,{method
 $('toggle').onclick=()=>action(state?.enabled?'pause':'start');$('check').onclick=()=>action('check');
 $('test').onclick=()=>action('test-notification');
 $('save').onclick=async()=>{if(!/^[0-9]{5}$/.test($('postcode').value.trim())){toast('请输入五位美国 ZIP Code，例如 10001');$('postcode').focus();return}if(await action('settings',{model:$('model').value,postcode:$('postcode').value.trim(),interval:Number($('interval').value),notifications:$('notifications').checked,clear_apple_cookies:$('clear-cookies').checked})){dirty=false;render();toast('设置已保存')}};
-for(const id of ['colour','capacity','only','nearby'])$(id).onchange=render;
+for(const id of ['colour','capacity','only'])$(id).onchange=render;
 for(const id of ['interval','notifications','postcode','model','clear-cookies'])$(id).oninput=()=>dirty=true;
 for(const id of ['phone-enabled','phone-sid','phone-token','phone-from','phone-to'])$(id).oninput=()=>phoneDirty=true;
 $('phone-save').onclick=async()=>{
