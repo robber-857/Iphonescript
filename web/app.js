@@ -1,12 +1,12 @@
 const $=id=>document.getElementById(id);
 let state,dirty=false,phoneDirty=false,renderedModel=null;
-const stamp=t=>t?new Date(t*1000).toLocaleTimeString('zh-CN',{timeZone:'Australia/Sydney',hour12:false}):'尚未检查';
+const stamp=t=>t?new Date(t*1000).toLocaleTimeString('zh-CN',{hour12:false}):'尚未检查';
 function toast(msg){$('toast').textContent=msg;$('toast').hidden=false;setTimeout(()=>$('toast').hidden=true,4500)}
 function element(tag,text,cls){const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e}
 function render(){
  if(!state)return;
- const postcode=state.postcode||'2000';
- const city=postcode==='2000'?'悉尼':postcode==='3000'?'墨尔本':'邮编 '+postcode+' 附近';
+ const postcode=state.postcode||'10001';
+ const city='美国 ZIP '+postcode+' 附近';
  const count=Object.keys(state.stores).length;
  $('location-title').textContent=city+'门店库存';
  document.title='Duo / '+city+'库存监测';
@@ -20,7 +20,7 @@ function render(){
  $('phone-status').textContent=(phone.configured?'已配置 '+phone.destination:'尚未配置')+' · '+(phone.last||'尚未拨号');
  if(!phoneDirty)$('phone-enabled').checked=!!phone.enabled;
  $('phone-test').disabled=!phone.configured;
- $('location').textContent=(postcode==='2000'?'SYDNEY':postcode==='3000'?'MELBOURNE':'POSTCODE')+' · '+postcode;
+ $('location').textContent='UNITED STATES'+' · '+postcode;
  const connected=state.collector_seen&&state.server_time-state.collector_seen<130;
  $('status').textContent=!connected?'等待浏览器采集器连接':state.cookie_cleanup?'等待清理 Apple Cookie':state.running?'正在检查':state.enabled?'监测已开启':'监测已暂停';
  $('dot').className='dot'+(connected&&state.enabled?' on':'');
@@ -42,9 +42,9 @@ function render(){
   for(const {v,r,row,status} of cells){const td=element('td','');const a=element('a',status==='available'?'● 可自提':status==='unavailable'?'暂无库存':'待确认','cell '+status);a.href=v.url;a.target='_blank';a.rel='noopener';a.title=(r?.error?'本次查询失败：'+r.error+'\n':'')+'上次成功：'+stamp(r?.checked)+'\n'+(row?.message||'尚无有效数据')+'\n点击打开 Apple 官网';td.append(a);tr.append(td)}
   body.append(tr);
  }
- if(!body.children.length){const td=element('td',count?'当前筛选下没有已确认有货的门店':'等待首次采集 '+postcode+' 附近门店；请确认扩展已更新至 1.3.3');td.colSpan=variants.length+1;const tr=element('tr','');tr.append(td);body.append(tr)}
+ if(!body.children.length){const td=element('td',count?'当前筛选下没有已确认有货的门店':'等待首次采集 '+postcode+' 附近门店；请确认扩展已更新至 1.4.0');td.colSpan=variants.length+1;const tr=element('tr','');tr.append(td);body.append(tr)}
  $('summary').textContent=`${available} 个有货组合 · ${unknown} 个待确认`;
- if(!dirty){$('model').value=state.model||'duo';$('postcode').value=state.postcode||'2000';$('interval').value=state.interval;$('notifications').checked=state.notifications;$('clear-cookies').checked=!!state.clear_apple_cookies}
+ if(!dirty){$('model').value=state.model||'duo';$('postcode').value=state.postcode||'10001';$('interval').value=state.interval;$('notifications').checked=state.notifications;$('clear-cookies').checked=!!state.clear_apple_cookies}
  $('events').replaceChildren();$('count').textContent=state.events.length?`/ ${state.events.length}`:'';
  for(const ev of state.events.slice(0,30)){const e=element('div','','event '+ev.kind);e.append(element('time',stamp(ev.time)),element('span',ev.message));$('events').append(e)}
  if(!state.events.length)$('events').append(element('p','开始监测后，这里将记录有货提醒和查询异常。','muted'));
@@ -53,7 +53,7 @@ async function refresh(){try{const r=await fetch('/api/state');if(!r.ok)throw Er
 async function action(path,body={}){try{const r=await fetch('/api/'+path,{method:'POST',headers:{'Content-Type':'application/json','X-Duo-Token':state?.token||''},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error);await refresh();return true}catch(e){toast(e.message);return false}}
 $('toggle').onclick=()=>action(state?.enabled?'pause':'start');$('check').onclick=()=>action('check');
 $('test').onclick=()=>action('test-notification');
-$('save').onclick=async()=>{if(!/^[0-9]{4}$/.test($('postcode').value.trim())){toast('请输入四位澳洲邮编，例如 2000');$('postcode').focus();return}if(await action('settings',{model:$('model').value,postcode:$('postcode').value.trim(),interval:Number($('interval').value),notifications:$('notifications').checked,clear_apple_cookies:$('clear-cookies').checked})){dirty=false;render();toast('设置已保存')}};
+$('save').onclick=async()=>{if(!/^[0-9]{5}$/.test($('postcode').value.trim())){toast('请输入五位美国 ZIP Code，例如 10001');$('postcode').focus();return}if(await action('settings',{model:$('model').value,postcode:$('postcode').value.trim(),interval:Number($('interval').value),notifications:$('notifications').checked,clear_apple_cookies:$('clear-cookies').checked})){dirty=false;render();toast('设置已保存')}};
 for(const id of ['colour','capacity','only'])$(id).onchange=render;
 for(const id of ['interval','notifications','postcode','model','clear-cookies'])$(id).oninput=()=>dirty=true;
 for(const id of ['phone-enabled','phone-sid','phone-token','phone-from','phone-to'])$(id).oninput=()=>phoneDirty=true;
@@ -68,3 +68,4 @@ $('phone-test').onclick=async()=>{
  if(await action('phone/test',{confirm:true}))toast('测试拨号请求已启动，请查看电话状态');
 };
 refresh();setInterval(refresh,3000);
+

@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from monitor import VARIANTS, STORES, stock_changes, MODELS, variants_for
 from phone import Phone
 
-DATA = ROOT / 'data'
+DATA = ROOT / 'data-us'
 DATA.mkdir(exist_ok=True)
 STATE_FILE = DATA / 'state.json'
 LOCK = threading.RLock()
@@ -26,7 +26,7 @@ if STATE_FILE.exists():
         pass
 STATE.update(running=False, current=None, next_check=time.time() if STATE['enabled'] else None)
 STATE.update(collector_seen=None,task=None,queue=[])
-STATE.setdefault('postcode','2000')
+STATE.setdefault('postcode','10001')
 STATE.setdefault('model','duo')
 STATE.setdefault('clear_apple_cookies',False)
 STATE.setdefault('cookie_cleanup',None)
@@ -68,8 +68,6 @@ def notify(message):
     threading.Thread(target=show,daemon=True).start()
 
 def display_stores():
-    if STATE['postcode'] == '2000':
-        return STORES
     return {row['store_id']: row['store']
             for result in STATE['results'].values() if not result.get('error')
             for row in result.get('stores', [])}
@@ -87,7 +85,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        if self.headers.get('Host') not in ('127.0.0.1:8765','localhost:8765'):
+        if self.headers.get('Host') not in ('127.0.0.1:8766','localhost:8766'):
             return self.send(403,{'error':'Local access only'})
         if self.path == '/api/state':
             with LOCK:
@@ -154,8 +152,8 @@ class Handler(BaseHTTPRequestHandler):
                     if not isinstance(payload.get('notifications'),bool):
                         raise ValueError('提醒开关格式错误')
                     postcode=str(payload.get('postcode',STATE['postcode'])).strip()
-                    if not re.fullmatch(r'[0-9]{4}',postcode):
-                        raise ValueError('请输入四位澳洲邮编，例如 2000')
+                    if not re.fullmatch(r'[0-9]{5}',postcode):
+                        raise ValueError('请输入五位美国 ZIP Code，例如 10001')
                     model=payload.get('model',STATE['model'])
                     if model not in MODELS:
                         raise ValueError('请选择支持的机型')
@@ -194,7 +192,7 @@ class Handler(BaseHTTPRequestHandler):
                     task=STATE.get('task')
                     if not task or payload.get('id')!=task['id']:
                         return self.send(409,{'error':'Task expired'})
-                    if payload.get('postcode','2000')!=task.get('postcode','2000'):
+                    if payload.get('postcode','10001')!=task.get('postcode','10001'):
                         return self.send(409,{'error':'采集结果邮编不匹配，请刷新采集扩展'})
                     variant=task['variant']
                     result=STATE['results'].setdefault(variant['id'],dict(stores=[],checked=None))
@@ -203,14 +201,12 @@ class Handler(BaseHTTPRequestHandler):
                         event('error',variant['id']+'：'+str(payload['error'])[:220])
                     else:
                         rows=payload['stores']
-                        if task['postcode'] != '2000' and payload.get('scope_version') != 2:
-                            raise ValueError('请重新加载采集扩展 1.3.3，并刷新 Apple 商品页以支持邮编门店切换')
+                        if payload.get('scope_version') != 2:
+                            raise ValueError('请重新加载采集扩展 1.4.0，并刷新 Apple 商品页以支持邮编门店切换')
                         if not isinstance(rows,list) or not rows or len(rows)>100 or any(not isinstance(r,dict) or not re.fullmatch(r'R[0-9]+',str(r.get('store_id',''))) or not isinstance(r.get('store'),str) or not r['store'].strip() for r in rows):
                             raise ValueError('门店列表无效')
                         if len({r['store_id'] for r in rows}) != len(rows):
                             raise ValueError('门店列表重复')
-                        if task['postcode'] == '2000' and (len(rows)!=len(STORES) or {r['store_id'] for r in rows}!=set(STORES)):
-                            raise ValueError('门店列表不完整')
                         if any(r['status'] not in ('available','unavailable') for r in rows):
                             raise ValueError('无法识别库存状态')
                         changes=stock_changes(result.get('stores',[]),rows)
@@ -237,11 +233,12 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 if __name__=='__main__':
-    httpd=ThreadingHTTPServer(('127.0.0.1',8765),Handler)
+    httpd=ThreadingHTTPServer(('127.0.0.1',8766),Handler)
     # The normal Chrome session collects pages; isolated automated sessions
     # currently receive HTTP 541 from Apple. Tasks are leased via the local API.
-    print('Duo Monitor: http://127.0.0.1:8765',flush=True)
+    print('Duo Monitor: http://127.0.0.1:8766',flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         httpd.server_close()
+

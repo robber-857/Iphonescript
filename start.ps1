@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
-$monitorUrl = 'http://127.0.0.1:8765'
+$monitorUrl = 'http://127.0.0.1:8766'
 try {
     $existing = Invoke-RestMethod "$monitorUrl/api/state" -TimeoutSec 2
     if ($existing.variants) {
@@ -24,3 +24,4 @@ for ($i=0; $i -lt 20; $i++) {
     } catch {}
 }
 throw 'Backend did not start. See data-server-error.log.'
+

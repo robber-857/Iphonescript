@@ -3,7 +3,7 @@
 document.addEventListener('duo-postcode-request', async event => {
  let request;
  try {request=JSON.parse(event.detail)} catch {return}
- if(!/^[0-9]{4}$/.test(request.postcode)||typeof request.id!=='string')return;
+ if(!/^[0-9]{5}$/.test(request.postcode)||typeof request.id!=='string')return;
  const input=document.querySelector('[role="dialog"] input[data-autom="zipCode"]');
  let error='';
  try {
@@ -23,3 +23,4 @@ document.addEventListener('duo-postcode-request', async event => {
  } catch(e){error=e.message}
  document.dispatchEvent(new CustomEvent('duo-postcode-response',{detail:JSON.stringify({id:request.id,error,value:input?.value||''})}));
 });
+

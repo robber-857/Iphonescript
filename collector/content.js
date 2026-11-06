@@ -1,4 +1,4 @@
-const stores={R238:'Apple Sydney',R523:'Apple Broadway',R254:'Apple Bondi',R253:'Apple Chatswood Chase',R606:'Apple Miranda',R344:'Apple Castle Towers',R440:'Apple Penrith'};
+const stores={};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let active=null,finished=null;
 function until(fn,timeout=40000){return new Promise((resolve,reject)=>{
@@ -28,7 +28,6 @@ function readInventory(root,variant,postcode){
  for(const el of list.querySelectorAll('[data-autom^="pickupStore_"]')){
   const option=el.querySelector('input');
   if(!option){issues.push('门店行缺少选项');continue}
-  if(postcode==='2000'&&!stores[option.value])continue;
   if(!/^R[0-9]+$/.test(option.value)){issues.push('门店编号无效');continue}
   const store=stores[option.value]||(el.querySelector('.form-selector-title')?.textContent||'').replace(/\s+/g,' ').trim()||('Apple '+option.value);
   if(seen.has(option.value)){issues.push('重复门店：'+store);continue}
@@ -43,7 +42,7 @@ function readInventory(root,variant,postcode){
   if(status==='unknown')issues.push(store+' 文案无法识别：'+(message.slice(0,90)||'空白')+(option.disabled?'（选项禁用）':''));
   rows.push({store_id:option.value,store,status,message,part});
  }
- const missing=Object.keys(postcode==='2000'?stores:{}).filter(id=>!seen.has(id));
+ const missing=Object.keys(postcode==='10001'?stores:{}).filter(id=>!seen.has(id));
  if(missing.length)issues.unshift('缺少门店：'+missing.map(id=>stores[id]).join('、'));
  if(!rows.length)issues.unshift('当前邮编没有可确认的门店数据');
  if(parts.size>1)issues.unshift('当前列表混入多个商品编号');
@@ -92,7 +91,7 @@ async function collect(task){
  if(active===task.id||finished===task.id)return;
  if(location.href.split('?')[0]!==task.variant.url)return;
  active=task.id;
- const postcode=task.postcode||'2000';
+ const postcode=task.postcode||'10001';
  let stage='等待库存查询按钮';
  try{
   await openPickup();
@@ -131,3 +130,4 @@ chrome.runtime.onMessage.addListener((msg,sender,respond)=>{
  }
 });
 chrome.runtime.sendMessage({type:'ready'}).then(r=>{if(r?.task)collect(r.task)}).catch(()=>{});
+

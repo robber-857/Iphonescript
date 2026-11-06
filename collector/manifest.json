@@ -1,16 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "Duo 悉尼库存采集器",
-  "version": "1.3.3",
-  "description": "为本机 Duo 后台采集 Apple 澳洲门店自提库存。",
+  "name": "Duo 美国库存采集器",
+  "version": "1.4.0",
+  "description": "为本机 Duo 后台采集 Apple 美国门店自提库存。",
   "permissions": [
     "alarms",
     "storage",
     "cookies"
   ],
   "host_permissions": [
-    "http://127.0.0.1:8765/*",
-    "https://www.apple.com/au/shop/buy-iphone/*",
+    "http://127.0.0.1:8766/*",
+    "https://www.apple.com/shop/buy-iphone/*",
     "https://*.apple.com/*"
   ],
   "background": {
@@ -22,8 +22,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.apple.com/au/shop/buy-iphone/iphone-duo/*",
-        "https://www.apple.com/au/shop/buy-iphone/iphone-18-pro/*"
+        "https://www.apple.com/shop/buy-iphone/iphone-duo/*",
+        "https://www.apple.com/shop/buy-iphone/iphone-18-pro/*"
       ],
       "js": [
         "page-input.js"
@@ -33,8 +33,8 @@
     },
     {
       "matches": [
-        "https://www.apple.com/au/shop/buy-iphone/iphone-duo/*",
-        "https://www.apple.com/au/shop/buy-iphone/iphone-18-pro/*"
+        "https://www.apple.com/shop/buy-iphone/iphone-duo/*",
+        "https://www.apple.com/shop/buy-iphone/iphone-18-pro/*"
       ],
       "js": [
         "content.js"
