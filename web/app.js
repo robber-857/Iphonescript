@@ -20,7 +20,7 @@ function render(){
  $('location-title').textContent=city+'门店库存';
  document.title='Duo / '+city+'库存监测';
  $('store-scope').textContent=count?'监测与提醒范围：50 km 内 '+visibleStores.length+' 家：'+visibleStores.map(([,name])=>name).join(' / '):'等待 Apple 返回 '+postcode+' 附近门店';
- $('model-summary').textContent=state.model==='pro-test'?'iPhone 18 Pro · 256GB Black · 真实库存测试（不自动拨号）':'iPhone Duo · 全部颜色和容量 · 50 km 内 · '+(count?count+' 家门店':'等待门店数据');
+ $('model-summary').textContent=state.model==='pro-test'?'iPhone 18 Pro · 256GB Black · 真实库存测试 · 50 km 内 · 支持自动电话':'iPhone Duo · 全部颜色和容量 · 50 km 内 · '+(count?count+' 家门店':'等待门店数据');
  if(renderedModel!==state.model){
   $('colour').replaceChildren(new Option('全部颜色',''),...Array.from(new Set(state.variants.map(v=>v.colour))).map(v=>new Option(v,v)));
   $('capacity').value='';renderedModel=state.model;

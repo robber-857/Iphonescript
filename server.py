@@ -229,8 +229,7 @@ class Handler(BaseHTTPRequestHandler):
                             prefix='【Pro 测试】' if variant.get('test') else ''
                             if STATE['notifications']:
                                 notify(prefix+'检测到可自提库存，请到 Apple 官网确认：\n'+variant.get('model','iPhone Duo')+' '+variant['capacity']+' '+variant['colour']+'\n'+ '、'.join(r['store'] for r in changes))
-                            if not variant.get('test'):
-                                PENDING_PHONE.append(variant.get('model','iPhone Duo')+' '+variant['capacity']+' '+variant['colour']+' at '+', '.join(r['store'] for r in changes))
+                            PENDING_PHONE.append(variant.get('model','iPhone Duo')+' '+variant['capacity']+' '+variant['colour']+' at '+', '.join(r['store'] for r in changes))
                     STATE['task']=None
                 else:
                     return self.send(404,{'error':'Not found'})

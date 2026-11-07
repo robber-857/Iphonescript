@@ -122,7 +122,7 @@ class BackendTests(unittest.TestCase):
                 self.request('/api/settings',dict(postcode='10001',interval=interval,notifications=True))
             self.assertEqual(ctx.exception.code,400)
 
-    def test_pro_switch_and_no_auto_call(self):
+    def test_pro_switch_and_auto_call_once_at_cycle_end(self):
         old=self.request('/api/collector/task')['task']
         self.request('/api/settings',dict(model='pro-test',postcode='10001',interval=30,notifications=True))
         task=self.request('/api/collector/task')['task']
@@ -131,10 +131,48 @@ class BackendTests(unittest.TestCase):
             self.request('/api/collector/result',dict(id=old['id'],error='stale'))
         rows=[dict(store_id=sid,store=name,distance_km=5,status='available',message='Available Tomorrow') for sid,name in FIXTURE_STORES.items()]
         self.request('/api/collector/result',dict(id=task['id'],stores=rows))
+        self.mock_phone.assert_not_called()  # Aggregate only when the round ends.
         self.assertIsNone(self.request('/api/collector/task')['task'])
         self.mock_notify.assert_called_once()
-        self.mock_phone.assert_not_called()
+        self.mock_phone.assert_called_once()
+        self.assertIn('iPhone 18 Pro',self.mock_phone.call_args.args[0])
+        for name in FIXTURE_STORES.values():
+            self.assertIn(name,self.mock_phone.call_args.args[0])
         self.assertEqual(len(server.STATE['results']),1)
+
+    def pro_round(self, status='available', distance=5, error=None):
+        server.STATE.update(model='pro-test',next_check=0)
+        task=self.request('/api/collector/task')['task']
+        payload=dict(id=task['id'],error=error) if error else dict(id=task['id'],stores=[
+            dict(store_id='R077',store='Fixture Portland',distance_km=distance,
+                 status=status,message='Available Today' if status=='available' else 'Currently unavailable')])
+        self.request('/api/collector/result',payload)
+        self.assertIsNone(self.request('/api/collector/task')['task'])
+
+    def test_pro_deduplicates_stock_and_error_then_calls_on_restock(self):
+        self.pro_round()
+        self.pro_round()
+        self.pro_round(error='HTTP 541')
+        self.pro_round()
+        self.mock_phone.assert_called_once()
+        self.pro_round(status='unavailable')
+        self.mock_phone.assert_called_once()
+        self.pro_round()
+        self.assertEqual(self.mock_phone.call_count,2)
+        self.assertEqual(server.PENDING_PHONE,[])
+
+    def test_pro_distant_stock_does_not_call(self):
+        self.pro_round(distance=50.0001)
+        self.mock_phone.assert_not_called()
+        self.mock_notify.assert_not_called()
+
+    def test_pro_cooldown_rejection_is_not_retried(self):
+        self.mock_phone.side_effect=ValueError('电话提醒冷却中：两次拨号至少间隔 1 分钟')
+        self.pro_round()
+        self.assertEqual(server.PENDING_PHONE,[])
+        self.assertTrue(any(e['kind']=='phone' and '冷却' in e['message'] for e in server.STATE['events']))
+        self.pro_round()
+        self.mock_phone.assert_called_once()
 
     def test_duo_phone_aggregated_once_per_cycle(self):
         for i in range(8):
